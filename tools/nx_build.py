@@ -21,6 +21,9 @@ Edition B options (lane N1A, docs/next_engine_spec_v0.2_flat.md section 1 and 6)
                       texture names resolved through <assets>/manifest.json "floors") give the bytes poked at the addresses of
                       the symbols CEIL_B, FTEX_B, CTEX_B of the assembled program (.sym). Missing symbols -> warning, no poke.
                       Without --level-txt the defaults (32, flag, plaster) are poked when the symbols exist.
+  --sprites FILE      lane N2 (5 Nov 2026): a 16K image packed as 16K bank 13 (= 8K banks 26/27, software sprite data for
+                      src/next/sprites_next.asm, built by tools/nx_sprites_b.py). Default absent -> no bank 13 -> the .nex is
+                      byte-identical to the build without this option (proven in build/night/N2_build_identity.out).
 Prints the code size, the symbols that matter, what was poked and the .nex path; exit code 0 only when everything was built."""
 import argparse, json, pathlib, subprocess, sys
 HERE = pathlib.Path(__file__).resolve().parent
@@ -133,7 +136,7 @@ def poke_header(img, syms, hb, opts):
         img[addr - CODE_BASE] = hb[key]
         print("poked %s (%04Xh) = %d (%s = %s)" % (sym, addr, hb[key], key, opts[key]))
 
-def build(src="src/next/main.asm", out="build/next/killemall_next.nex", bin_name="main", assets=None, level=None, level_index=0, level_txt=None):
+def build(src="src/next/main.asm", out="build/next/killemall_next.nex", bin_name="main", assets=None, level=None, level_index=0, level_txt=None, sprites=None):
     src = ROOT / src
     out = ROOT / out
     assets = ASSETS if assets is None else (ROOT / assets)
@@ -168,6 +171,11 @@ def build(src="src/next/main.asm", out="build/next/killemall_next.nex", bin_name
     banks = {5: bytes(16384), 2: bytes(img), 4: TABLES.read_bytes(), 12: floors.ljust(16384, b"\0")}
     for q in range(4):
         banks[8 + q] = walls[q * 16384:(q + 1) * 16384]
+    if sprites is not None:
+        spr = (ROOT / sprites).read_bytes()
+        assert len(spr) <= 16384, "--sprites image must be <= 16384 bytes (got %d)" % len(spr)
+        banks[13] = spr.ljust(16384, b"\0")
+        print("sprites %s: %d bytes -> 16K bank 13 (8K banks 26/27)" % (sprites, len(spr)))
     build_nex(out, banks, pc=0x8000, sp=0x5F00)
     print("wrote %s (%d bytes; banks %s; PC 8000h SP 5F00h; palette at %04Xh, level at %04Xh; assets %s)" % (
         out.relative_to(ROOT), out.stat().st_size, sorted(banks), PALETTE_ADDR, LEVEL_ADDR, assets.relative_to(ROOT) if assets.is_relative_to(ROOT) else assets))
@@ -182,5 +190,6 @@ if __name__ == "__main__":
     ap.add_argument("--level", default=None, help="tools/mapc.py 'next' .bin; default: <assets>/level0.bin (option A layout)")
     ap.add_argument("--level-index", type=int, default=0, help="which level of a multi-level mapc file (default 0)")
     ap.add_argument("--level-txt", default=None, help="level .txt whose #ceil= #ftex= #ctex= header lines are poked at CEIL_B/FTEX_B/CTEX_B")
+    ap.add_argument("--sprites", default=None, help="lane N2: 16K sprite image packed as 16K bank 13 (default: no bank 13, output unchanged)")
     a = ap.parse_args()
-    build(a.src, a.out, a.bin_name, a.assets, a.level, a.level_index, a.level_txt)
+    build(a.src, a.out, a.bin_name, a.assets, a.level, a.level_index, a.level_txt, a.sprites)

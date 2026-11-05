@@ -94,10 +94,22 @@ pal_loop:
         ld (g_keys),a
         ld a,1
         ld (g_moved),a                  ; force setup_camera_b before the first frame
+        xor a
+        ld (g_draw_off),a               ; lane N2: sprites/weapon/HUD drawn (1 = engine frame only, oracle A)
+        ld (g_hold),a
+        ld (g_held),a
+        ld (g_hold_tk),a
+        ld (g_hold_tk+1),a
+        ld a,7
+        ld (g_draw_mask),a              ; lane N2: sprites + weapon + HUD (the oracles clear bits)
+        call game_init                  ; lane N2: health/ammo/keys, things from the mapc level, door log (game_b_next.asm)
         im 1
         ei
         if defined TEST_FULL_B
         jp tfb_main                     ; test_full_b.asm: forced camera, one compared frame, timed frames
+        endif
+        if defined TEST_GAME_B
+        jp tgb_main                     ; test_game_b.asm (lane N2): scene/things poked by tools/nx_test_game_b.py, game_frame on demand
         endif
 
 ; ---------------------------------------------------------------------------------------------------------------
@@ -137,7 +149,8 @@ ml_sim_done:
         ld (g_moved),a
         call setup_camera_b             ; dirx/diry/plx/ply, mx0/my0, eye = 22 for the new px/py/ang
 ml_draw:
-        call walk_frame_b               ; planes_reset ; 128 columns (draw_piece / plane_add / void_fill) ; planes_flush ; frames += 1
+        call game_steps                 ; lane N2: 0..2 game steps of 0.1 s (kea48.asm steps model; game_b_next.asm)
+        call game_frame                 ; lane N2: walk_frame_b, then sprites + weapon + HUD into the LoRes frame (sprites_next.asm)
         jp main_loop
 
 ; ---------------------------------------------------------------------------------------------------------------
@@ -192,6 +205,15 @@ rk_7:
         jr nz,rk_8
         set KB_RIGHT,c
 rk_8:
+        ld a,7Fh
+        in a,(0FEh)                     ; SPACE SYM M N B (lane N2: M fire, SPACE use - main.asm's keys)
+        bit 2,a
+        jr nz,rk_9
+        set KB_FIRE,c
+rk_9:   bit 0,a
+        jr nz,rk_10
+        set KB_USE,c
+rk_10:
         ld a,c
         ld (g_keys),a
         ret
@@ -387,6 +409,9 @@ CTEX_B: db 1                            ; ceiling texture id (manifest "plaster"
 
         include "walk_b.asm"            ; lane N1: setup_camera_b, walk_frame_b (spec v0.2 section 3)
         include "draw_b.asm"            ; lane N1D: draw_piece, plane_add, planes_reset, planes_flush, void_fill (tiers)
+        include "game_b_next.asm"       ; lane N2: game rules (steps, doors, pickups, enemy AI, pistol), ETAB data
+        include "sprites_next.asm"      ; lane N2: things -> vis list -> software sprites with ZBUF occlusion, weapon
+        include "hud_next.asm"          ; lane N2: LoRes HUD band (rows 88..95)
 code_end:
         if code_end gt PALETTE
         .error "main_b.asm code overlaps the palette block at 9E00h"

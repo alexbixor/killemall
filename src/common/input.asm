@@ -61,11 +61,85 @@ in_read:
         ld h,high in_joytab    ; table never crosses a page (guarded below)
         ld a,(hl)
         or e
+        IF DEFINED MOUSE
+        ld e,a
+ir_kb:  ld a,(opt_mouse)       ; lane M (128K/Next): mouse ON -> OR the click latch (b4 fire, b5 use) into the result, clear it
+        or a
+        ld a,e
+        jr z,ir_nm
+        ld hl,mouse_btn
+        or (hl)
+        ld (hl),0
+ir_nm:  pop hl
+        ret
+        ELSE
         pop hl
         ret
 ir_kb:  ld a,e
         pop hl
         ret
+        ENDIF
+
+        IF DEFINED MOUSE
+; ---------------------------------------------------------------- lane M (5 Nov 2026): mouse look, 128K / Next builds only
+; mouse_look   called once per RENDERED frame by the main loop (kea48.asm `call mouse_look` before `call steps`), not per
+;              game step: latency = one frame. opt_mouse = 0: ret, nothing touched (28 T). Else: Kempston mouse X counter
+;              (port 0FBDFh, 8-bit, grows moving right; the Next's PS/2 mouse answers on the same ports): dx = X - mouse_last
+;              (signed, wraps), mouse_last = X; (angle:mouse_frac) += dx * MSENS as one 16-bit value, so slow movements
+;              accumulate in the fraction and the integer part turns the view (angle + = right, like the P key). With GLIDE
+;              the step-start angle oang moves by the same amount so the camera shows the turn at once (both lerp ends shift).
+;              Buttons (port 0FADFh, active low, b0 RIGHT, b1 LEFT - the classic Kempston quirk; Next wheel bits ignored):
+;              left -> fire (action b4), right -> use/open (b5), ORed into the latch mouse_btn; in_read ORs the latch into
+;              its result and clears it, so a click between two game steps is never lost and fire/door cooldowns stay in
+;              game_tick. Mouse Y (0FFDFh) is ignored: no pitch in this engine. Destroys AF BC HL E. 28 T when OFF,
+;              330..350 T when ON (tools/m_mouse_test.py measures both), once per frame.
+;              Never auto-detected: a Spectrum without the interface returns floating-bus junk on these ports.
+MSHIFT  equ 6                  ; sensitivity: 2^MSHIFT / 256 angle units per count -> 6 = 1/4 unit, 1024 counts = one full turn
+mouse_look:
+        ld a,(opt_mouse)
+        or a
+        ret z
+        ld bc,0FBDFh
+        in a,(c)               ; X counter
+        ld hl,mouse_last
+        ld e,a
+        sub (hl)               ; dx (signed 8-bit, wraps correctly: 7Fh->80h = +1, FFh->00h = +1)
+        ld (hl),e
+        ld l,a
+        rla
+        sbc a,a
+        ld h,a                 ; HL = dx sign-extended
+        rept MSHIFT
+        add hl,hl              ; HL = dx * 2^MSHIFT (s16: high byte = whole angle units, low = 1/256 units)
+        endm
+        ld a,(mouse_frac)
+        add a,l
+        ld (mouse_frac),a
+        ld a,h
+        adc a,0                ; A = whole units to turn, including the fraction carry
+        ld h,a
+        ld a,(angle)
+        add a,h
+        ld (angle),a
+        IF DEFINED GLIDE
+        ld a,(oang)            ; game_d.asm glide: the step-start angle turns too -> no glide lag on mouse turns
+        add a,h
+        ld (oang),a
+        ENDIF
+        ld b,0FAh              ; C = 0DFh still
+        in a,(c)               ; buttons, active low: b0 right, b1 left
+        ld hl,mouse_btn
+        rra                    ; carry = right button bit (1 = up)
+        jr c,ml_r
+        set 5,(hl)             ; right -> use/open (action b5)
+ml_r:   rra
+        jr c,ml_l
+        set 4,(hl)             ; left -> fire (action b4); latched until in_read consumes it
+ml_l:   ret
+mouse_last: defb 0             ; X counter at the last frame
+mouse_frac: defb 0             ; 1/256 angle units not yet turned
+mouse_btn:  defb 0             ; click latch (action bits b4 / b5)
+        ENDIF
 
 ; ---------------------------------------------------------------- scanning (menu / redefine; not time critical)
 in_scan:

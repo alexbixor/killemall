@@ -8,7 +8,10 @@ How a step is run: init_game (level 1 as assembled into the image), then per ste
 movement, doors, enemies, pickups), ticks += 5 (the ISR would add 5 per step at 10 steps/s; va_walk reads bit 4 of ticks).
 snd_fx is stubbed to `ret` (the beeper is blocking code that polls nothing we have). The script walks into enemies, turns,
 strafes and fires so chase/attack/hitscan/damage/death paths all run (the imp at (3,2) and zombie at (7,10) of level 1).
-usage: test_game_replay.py [ref.tap] [cur.tap]   exit 0 = identical; prints the compared values and RESULT.
+usage: test_game_replay.py [ref.tap] [cur.tap] [ref.sym] [cur.sym]   exit 0 = identical; prints the compared values and RESULT.
+Lane M (5 Nov 2026) added the optional .sym arguments for the 128K mouse-OFF case: the pre-M 128K image vs the one built with
+--equ MOUSE=1 (opt_mouse stays 0 = the menu default): python tools/test_game_replay.py build/night/pre_M/build/kea128.tap
+build/kea128.tap build/night/pre_M/build/kea128.sym build/kea128.sym   (the engine image is the LAST CODE block of either tape).
 """
 import sys, re, pathlib, hashlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -16,8 +19,8 @@ import z80
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 REF = ROOT / (sys.argv[1] if len(sys.argv) > 1 else "build/night/pre_G/build/killemall48_m25.tap")
 CUR = ROOT / (sys.argv[2] if len(sys.argv) > 2 else "build/kea48.tap")
-REFSYM = ROOT / "build/night/pre_G/build/kea48_m25.sym"
-CURSYM = ROOT / "build/kea48.sym"
+REFSYM = ROOT / (sys.argv[3] if len(sys.argv) > 3 else "build/night/pre_G/build/kea48_m25.sym")
+CURSYM = ROOT / (sys.argv[4] if len(sys.argv) > 4 else "build/kea48.sym")
 TRAP, SCR = 0x5EF0, 0x5EC0            # DRAM spare (state.asm): harness stub + trap, as every other test uses
 STEPS, CHECK = 600, (100, 300, 600)
 

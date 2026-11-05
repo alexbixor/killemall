@@ -23,16 +23,21 @@ FE_AHI   equ 0x4F               ; bright, blue paper, white ink
 FE_AFLASH equ 0xCE              ; flash, bright, blue paper, yellow ink
 FE_PIX   equ 0x5000             ; pixel address of attribute row 16, line 0
 FE_ATTR  equ 0x5A00             ; attribute address of row 16
+        IF DEFINED MOUSE
+FE_N     equ 7                  ; lane M (128K/Next, pasmo --equ MOUSE=1): main menu items incl. MOUSE: OFF/ON = rows 16..22
+        ELSE                    ; + hint row 23; pause menu FE_N+1 = 8 rows 16..23 (it has no hint). QUIT TO MENU is item FE_N,
+FE_N     equ 6                  ; RESUME is string FE_N+1 of fe_s_items. Without MOUSE every byte below is as before (6/7/6/7).
+        ENDIF
 
 fe_begin:
 fe_run: xor a
         ld (fe_mode),a
-        ld a,6
+        ld a,FE_N
         jr fe_menu
 fe_pause:
         ld a,1
         ld (fe_mode),a
-        ld a,7
+        ld a,FE_N+1
 fe_menu:
         ld (fe_count),a
         xor a
@@ -99,7 +104,7 @@ fe_sel: ld a,(fe_cur)
         jr z,fe_exit0          ; START GAME / RESUME
         cp 5
         jp z,fe_redef
-        cp 6
+        cp FE_N
         jr z,fe_quit
         ld c,a
         add a,a
@@ -128,6 +133,15 @@ fe_exit:
         push af
 fex1:   call in_scan
         jr nz,fex1             ; return only once every key is up
+        IF DEFINED MOUSE
+        ld a,(opt_mouse)       ; lane M: mouse ON -> re-base the X counter here (START / RESUME / QUIT), so the mouse moved
+        or a                   ; while the menu was up (mouse_look is not called there) does not turn the view on the first frame
+        jr z,fex2
+        ld bc,0FBDFh
+        in a,(c)
+        ld (mouse_last),a
+fex2:
+        ENDIF
         pop af
         ret
 
@@ -215,7 +229,7 @@ fe_draw_row:            ; A = item index: clears the pixel row, prints label (+ 
         ld a,(fe_mode)
         or a
         jr z,fdr1              ; main menu: item 0 = START GAME
-        ld a,7                 ; pause menu: RESUME
+        ld a,FE_N+1            ; pause menu: RESUME
 fdr1:   ld hl,fe_s_items
         call fe_nth
         call fe_print
@@ -495,6 +509,10 @@ fe_items:               ; per item: value pair index into fe_s_vals, dw option b
         defw opt_joy
         defb 0
         defw 0                 ; REDEFINE KEYS
+        IF DEFINED MOUSE
+        defb 0
+        defw opt_mouse         ; lane M: MOUSE: OFF/ON (pair 0), item 6; QUIT TO MENU becomes item 7 (128K/Next builds only)
+        ENDIF
         defb 0
         defw 0                 ; QUIT TO MENU
 fe_s_items:
@@ -504,6 +522,9 @@ fe_s_items:
         defb "DETAIL: ",0
         defb "CONTROLS: ",0
         defb "REDEFINE KEYS",0
+        IF DEFINED MOUSE
+        defb "MOUSE: ",0
+        ENDIF
         defb "QUIT TO MENU",0
         defb "RESUME",0
 fe_s_vals:

@@ -1088,20 +1088,58 @@ ps_tab: dw ps_s0,ps_s7,ps_s6,ps_s5,ps_s4,ps_s3,ps_s2,ps_s1
 dr_span_far:                    ; d > 4095: palette index 0
         xor a
 ; dr_span_fill: A = colour -> row dr_y, columns dr_c0 .. dr_c0 + dr_n - 1 = A
+; N1M (lane N1M, pixel-neutral speed change; the original is in build/night/pre_N1M/src/next/draw_b.asm): 8 unrolled
+; `ld (de),a ; inc e` slots (11 T per pixel instead of the 24 T of ld (hl),a ; inc l ; djnz) entered at slot
+; (8 - n mod 8) mod 8 like the textured span writer, so the pixel count comes out exact. Rows are 128-byte aligned and
+; c0 + n <= 128, so `inc e` never has to carry into D. Uses A, B, C, DE, HL, IXL.
 dr_span_fill:
-        ld c,a
+        ld c,a                  ; C = colour
         ld a,(dr_y)
         call dr_scr_addr
         ld a,(dr_c0)
         or l
-        ld l,a
+        ld e,a
+        ld d,h                  ; DE = screen address of (c0, y)
         ld a,(dr_n)
-        ld b,a
-        ld a,c
-psf:    ld (hl),a
-        inc l
-        djnz psf
+        ld b,a                  ; B = n (1..128)
+        add a,7
+        rra
+        rra
+        rra
+        and 1Fh                 ; passes = (n + 7) >> 3 (1..16)
+        ld ixl,a
+        ld a,b
+        and 7
+        add a,a
+        ld hl,fl_tab
+        db 0EDh,031h            ; add hl,a
+        ld a,(hl)
+        inc hl
+        ld h,(hl)
+        ld l,a                  ; HL = entry slot (8 - n mod 8) mod 8
+        ld a,c                  ; A = colour
+        jp (hl)
+fl_block:
+fl_s0:  ld (de),a
+        inc e
+fl_s1:  ld (de),a
+        inc e
+fl_s2:  ld (de),a
+        inc e
+fl_s3:  ld (de),a
+        inc e
+fl_s4:  ld (de),a
+        inc e
+fl_s5:  ld (de),a
+        inc e
+fl_s6:  ld (de),a
+        inc e
+fl_s7:  ld (de),a
+        inc e
+        db 0DDh,02Dh            ; dec ixl
+        jp nz,fl_block
         ret
+fl_tab: dw fl_s0,fl_s7,fl_s6,fl_s5,fl_s4,fl_s3,fl_s2,fl_s1
 
 
 ; ---------------------------------------------------------------- unrolled wall column slots (rows 0..95)

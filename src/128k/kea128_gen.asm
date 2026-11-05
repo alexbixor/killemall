@@ -62,6 +62,9 @@ main:   ld hl,(frames)
         ELSE
         call render
         ENDIF
+        IF DEFINED MOUSE
+        call mouse_look        ; lane M (5 Nov 2026, 128K/Next: pasmo --equ MOUSE=1): mouse look once per rendered frame (input.asm)
+        ENDIF
         call steps             ; M2.9 (4 Nov 2026): fixed-rate game logic, 10 steps/s on every machine (below)
         ld a,(in_break)
         or a

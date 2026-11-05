@@ -8,7 +8,7 @@ SRC=${1:-src/48k/kea48.asm}
 ( cd src/128k && pasmo --bin bank1.asm ../../build/bank1.bin ../../build/bank1.sym )
 .venv/bin/python tools/make128.py "$SRC" src/128k/kea128_gen.asm
 # --tap: pasmo writes a CODE header whose start = lowest org (27904) -> mktap128 takes code + start from it
-( cd src/48k && pasmo --equ GLIDE=1 --tap ../128k/kea128_gen.asm ../../build/kea128.tap ../../build/kea128.sym )   # M2.9b: camera glide (128K/Next only)
+( cd src/48k && pasmo --equ GLIDE=1 --equ MOUSE=1 --tap ../128k/kea128_gen.asm ../../build/kea128.tap ../../build/kea128.sym )   # M2.9b: camera glide (128K/Next only); lane M: mouse look (128K/Next only)
 .venv/bin/python tools/mktap128.py build/kea128.tap build/bank1.bin build/title.scr build/killemall128_m2.tap
 ls -la build/bank1.bin build/kea128.tap build/killemall128_m2.tap | awk '{print $9, $5}'
 # 1 Nov: layout gates on the 128K symbol file too (the right 7 byte columns vanished when COLBASE crossed a page in THIS image only)

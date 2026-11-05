@@ -11,6 +11,9 @@ opt_detail: defb 1          ; 1 dithered floor, 0 plain
 opt_joy:    defb 0          ; 0 keyboard, 1 Kempston
 in_break:   defb 0
 shield:     defb 0          ; M2.2: 0..100, absorbs enemy hits while > 0 (shield pickup type 20, game_c.asm pi2)
+        IF DEFINED MOUSE
+opt_mouse:  defb 0          ; lane M (5 Nov 2026): 0 off, 1 mouse look (Kempston mouse / Next PS/2); 128K+Next builds only
+        ENDIF                   ; (pasmo --equ MOUSE=1); appended so no other label moves, the 48K image is byte-identical
 ; M2.2: RAM-only tables live in the dead BASIC area 0x5D00..0x5FFF (PROG/VARS of the loader, never used again after
 ; RANDOMIZE USR 32768; the ROM tape loader only touches the stack) instead of the code image: 448 B less tape and 448 B more
 ; room for code in the high block. Every table below is written before it is read (things_init, render, ds_cols, ...).

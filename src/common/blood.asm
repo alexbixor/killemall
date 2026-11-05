@@ -7,18 +7,24 @@
 ; 4 bytes left, so ds_inkl moved here from lowcode.asm (INKTAB and ds_ink stay there; the call in sprites_e.asm is unchanged).
 ;
 ; ds_inkl: draw_sprite (sprites_e.asm), HL -> thing record, C = type and 31 (C kept; A, B, DE, HL free there).
-; ds_ink = INKTAB[type] (ink << 4; 0 = this sprite colours nothing: barrel, lamp, spare types). Enemies (types < 16):
+; ds_ink = ETAB[type].ink / ITINK[type] (ink << 4; 0 = this sprite colours nothing: barrel, lamp). Enemies (types < 16):
 ; 0x20 = red while the flash counter is non-zero (counter -= 1), else 0xA0 for a corpse (state 3; M2.6 blood 3 "floor stain",
 ; 3 Nov 2026: red with bit 7 = not BRIGHT, attr.asm - the dead frame lies on the floor, so its cells are a dark red stain where
 ; the enemy fell, for the rest of the level), else INKTAB.
 ds_inkl:
-        ld b,0
         ex de,hl               ; DE -> thing
-        ld hl,INKTAB
-        add hl,bc
-        ld a,(hl)              ; ink << 4
+        ld a,c
         bit 4,c
-        jr nz,dsi1             ; item / decor: fixed colour
+        jr nz,dsi_it           ; item / decor: ITINK[type - 16] (etab.asm, same page as ETAB)
+        add a,a                ; lane G: enemy ink = ETAB[type] +9 (16 B rows); both paths end in the add below
+        add a,a
+        add a,a
+        add a,a
+        add a,(ETAB+9-(ITINK-16)) and 255
+dsi_it: add a,(ITINK-16) and 255
+        ld l,a
+        ld h,ETAB/256
+        ld a,(hl)              ; ink << 4
         ld hl,6
         add hl,de              ; HL -> hp | flash frames << 6
         ld b,a

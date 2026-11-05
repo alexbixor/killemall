@@ -1,0 +1,22 @@
+; floater A (M4 v2) - cacodemon-like sphere: horn nubs, one big black-ringed eye (white iris, black pupil), wide black
+; grin with 4 hanging teeth, 2 short tendrils; 2 empty bottom rows (it floats)
+..##........##..
+..###..##..###..
+..############..
+.##############.
+######ooooo#####
+#####oo###oo####
+#####o#oo##o####
+#####o#oo##o####
+#####oo###oo####
+######ooooo#####
+################
+#oooooooooooooo#
+##o#oo#oo#oo#o##
+##oooooooooooo##
+.##############.
+..############..
+...##########...
+....#.#..#.#....
+................
+................

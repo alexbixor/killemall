@@ -1,4 +1,4 @@
-; sprites.asm (T1) - things table, camera transform, visibility list. Drawing is in sprites_b.asm.
+; sprites.asm (T1; lane G: hp from ETAB) - things table, camera transform, visibility list. Drawing is in sprites_b.asm.
 ; thing record (8 bytes): +0 type (0 none; 1 imp 2 zombie 16 health 17 ammo 18 red key 19 blue key 21 barrel 22 lamp)
 ;   +1 x (8.8 word) +3 y (8.8 word) +5 state (0 idle 1 chase 2 attack 3 dead) +6 hp +7 timer/anim
 NTHINGS equ 16
@@ -116,7 +116,20 @@ things_init:
 ti1:    ld b,a
 ti_l:   ld a,(hl)
         ld (de),a              ; type
-        inc hl
+        ld c,30                ; items keep hp 30 as before (never read: no AI, the hitscan ignores them)
+        bit 4,a
+        jr nz,ti_hp
+        push hl
+        add a,a                ; lane G: hp = ETAB[type].hp for enemies 1..6 (etab.asm)
+        add a,a
+        add a,a
+        add a,a
+        add a,ETAB and 255
+        ld l,a
+        ld h,ETAB/256
+        ld c,(hl)              ; C = hp
+        pop hl
+ti_hp:  inc hl
         inc de
         ld a,128
         ld (de),a              ; x frac
@@ -135,8 +148,8 @@ ti_l:   ld a,(hl)
         xor a
         ld (de),a              ; state idle
         inc de
-        ld a,30
-        ld (de),a              ; hp
+        ld a,c
+        ld (de),a              ; hp (ETAB)
         inc de
         xor a
         ld (de),a              ; timer

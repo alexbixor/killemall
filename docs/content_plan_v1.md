@@ -34,6 +34,11 @@ Decision (Alex, 5 Nov 12:18Z): "2 and then let's add enemies, bosses and levels 
       Behaviour of the shipped levels must not change; all 14 release gates green; 48K and 128K memory report.
 - Then (sequential, after N1 + N1D + N1A): N1M = src/next/main_b.asm, tools/nx_test_full_b.py, build/next/killemall_b.nex,
   the 25 fps gate and the video. Then N2 (game logic + sprites + HUD + AY on edition B) and phase 2 content.
+- M   Mouse look (added 5 Nov 14:40Z, Alex: "can we add mouse look too?"): Kempston mouse / Next PS/2 mouse ports 0FBDFh X,
+      0FFDFh Y, 0FADFh buttons; menu option MOUSE: OFF/ON (default OFF -> shipped play byte-identical); per-frame turn from the
+      X delta with a 16-bit fraction, left click = fire, right click = use. Owns src/common/input.asm, game_a.asm, state.asm,
+      frontend.asm + ONE hook line per main. Runs AFTER G reports (same files). Brief: build/night/M_BRIEF.md. Edition B gets
+      it through N2 (the hook line is filed in M_result.md).
 
 ## Phase 2 (after phase 1 reports): put the new types and levels into the editions
 - 48K: shotgunner (type 3) + the memory it needs; 3 levels stay.

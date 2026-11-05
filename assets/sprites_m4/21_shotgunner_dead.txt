@@ -1,0 +1,10 @@
+; shotgunner dead (M4 v5) - on his back: round helmet with the visor band at the left, torso with the boots sticking
+; up at the right, the shotgun (capped tube, white edges, black core) lying along the floor in front of the torso (8 rows)
+................
+.............##.
+..####.......##.
+.######..#######
+.#oooo#..#######
+.######.########
+.######.#oooooo#
+..####..########

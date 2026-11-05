@@ -1,0 +1,12 @@
+; ammo - box of cartridges seen from the side: five rounds standing upright inside the box (black separators,
+; black primer dots on top), dark label band below
+################
+#o#o#o#o#o#o#o##
+#o##o##o##o##o##
+#o##o##o##o##o##
+#o##o##o##o##o##
+################
+#oooooooooooooo#
+#oooooooooooooo#
+################
+.##############.

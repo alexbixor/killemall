@@ -1,0 +1,21 @@
+; floater B (M4 v2) - bob: 1 row lower, the pupil rolls right-down, the tendrils swing in; 2 empty bottom rows
+................
+..##........##..
+..###..##..###..
+..############..
+.##############.
+######ooooo#####
+#####oo###oo####
+#####o##oo#o####
+#####o##oo#o####
+#####oo###oo####
+######ooooo#####
+################
+#oooooooooooooo#
+##o#oo#oo#oo#o##
+##oooooooooooo##
+.##############.
+..############..
+...##########...
+................
+................

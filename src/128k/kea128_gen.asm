@@ -987,5 +987,12 @@ hi_end  equ $
 level_data:
         incbin "gen/level48.bin"   ; low block (ends below 32768; Z80-core test harnesses live in page 0x6A)
         include "../common/lowcode.asm"        ; M2.6 P2E: sprite colour marks, in the free tail of the low block (low_end <= 0x8000)
+; lane G (5 Nov 2026): the 255 bytes above the IM2 vector table (TABLE 0FE00h..0FF00h, filled by start) were never used on
+; either edition (bank 0 on the 128K, paged whenever game code runs): ETAB (enemy table, 128 B at 0FF70h, page-contained)
+; and the enemy step code live there. The tape block now runs to 0FFEFh (the zeros it loads over the stack / TABLE area are
+; rewritten by start; the image must end below 0FFFFh or pasmo's TAP length wraps). hi_end still measures the high block
+; (gate: >= 40 B to the stack top 0FDF0h).
+        org 0FF01h
+        include "../common/etab.asm"
         org hi_end
         end start

@@ -3,7 +3,8 @@ abs8:   or a
         ret p
         neg
         ret
-; step_axis: HL = thing - player delta (s16) -> HL = -sign(delta) * 15 (0.06 cell); 0 when |delta| < 0.06
+; step_axis: HL = thing - player delta (s16) -> HL = -sign(delta) * step (ETAB +1 via IY, lane G: 15 = 0.06 cell for types
+; 1 / 2); 0 when 0 <= delta < step (the same dead zone as the old `cp 15`; negative deltas always step, as before)
 step_axis:
         bit 7,h
         jr nz,sa_neg
@@ -11,13 +12,18 @@ step_axis:
         or a
         jr nz,sa_m
         ld a,l
-        cp 15
+        cp (iy+1)
         jr nc,sa_m
         ld hl,0
         ret
-sa_m:   ld hl,-15
+sa_m:   xor a
+        sub (iy+1)
+        ld l,a
+        sbc a,a
+        ld h,a                 ; HL = -step
         ret
-sa_neg: ld hl,15
+sa_neg: ld l,(iy+1)
+        ld h,0
         ret
 ; near_player07: carry when |dx| and |dy| < 0.7 cell (edx/edy set)
 near_player07:

@@ -1,14 +1,21 @@
 ; sprites_d.asm (T1) - vis list insert (sorted far -> near, ascending hv). Drawing loop in sprites_e.asm.
-; vis_add: thv/tc0/tnc set, IX -> thing. Sprite id = THSPR[type] (+ anim/state for enemies). Cap hv at 128 (CPU bound).
+; vis_add: thv/tc0/tnc set, IX -> thing. Sprite id = ETAB[type].spr / ITSPR (+ anim/state for enemies). Cap hv at 128 (CPU bound).
 vis_add:
         ld a,(nvis)
         cp VISMAX
         ret nc
         ld a,(ix+0)
         ld c,a
-        ld b,0
-        ld hl,THSPR
-        add hl,bc
+        bit 4,c
+        jr nz,va_it            ; item: ITSPR[type - 16] (etab.asm, same page as ETAB)
+        add a,a                ; lane G: enemy base sprite = ETAB[type] +8 (16 B rows); both paths end in the add below
+        add a,a
+        add a,a
+        add a,a
+        add a,(ETAB+8-(ITSPR-16)) and 255
+va_it:  add a,(ITSPR-16) and 255
+        ld l,a
+        ld h,ETAB/256
         ld a,(hl)
         bit 4,c
         jr nz,va_id            ; item: fixed sprite

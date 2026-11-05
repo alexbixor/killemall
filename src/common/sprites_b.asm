@@ -1,8 +1,7 @@
 ; sprites_b.asm (T1) - per-thing camera transform -> visible list (sorted far to near), then draw.
 ; vis entry (6 bytes): +0 hv (virtual height 2..192) +1 c0 (s8 left ray column) +2 nc (columns) +3 sprite data ptr (word) +5 thing idx
 VISMAX  equ 16
-; thing type -> base sprite id (enemies add 0/1 walk, 2 attack, 3 dead)
-THSPR:  defb 0,0,4,4,4,4,4,0, 0,0,0,0,0,0,0,0, 8,9,10,11,8,12,13,13
+; thing type -> base sprite id: lane G (5 Nov 2026): ETAB +8 for enemies 1..6, ITSPR for items 16..23 (etab.asm; was THSPR here)
 ; mul16: DE * BC -> DE:HL (unsigned 32-bit)
 mul16:  ld hl,0
         ld a,16

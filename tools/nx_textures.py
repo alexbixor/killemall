@@ -23,8 +23,14 @@ usage: nx_textures.py [--dais-literal] [--out DIR]   generate everything. Defaul
                                            build/next/assets (e.g. build/night/T_assets); the variant is recorded in manifest "generator".
        nx_textures.py --verify [--out DIR]  re-read the written files and check sizes, layout, palette format and the art/shade rules
                                            (prints PASS/FAIL counts, exit code 1 on any failure)
+       nx_textures.py --edition b --out build/next/assets_b [--sheet PNG]   edition B (lane N1A, docs/next_engine_spec_v0.2_flat.md
+                                           section 1): the same palette, floors, layout, shade rule and wall ids 0-4 / 8-15 as option A
+                                           (byte-identical 4 KB blocks), ids 5 = red door, 6 = blue door, 7 = exit portal; the manifest
+                                           gains "edition", "wallmap" (mapc cell code -> wall id) and "edition_b_note". --sheet PNG
+                                           writes a labelled contact sheet of all 16 walls x 4 shades at 4x (any edition).
 Texture pass 2 (lane T): F1 plaster ceiling = two dark 2-texel wooden beams per cell with a 1-texel shadow line, 8x8 plaster panels
 in two tones with 1-texel seams (was: one light 4-texel beam on flat plaster, which read as a flat cream area in the picture reviews).
+Edition B (lane N1A, 5 Nov): see the "edition B walls" block below; option A's default run is unchanged byte for byte.
 """
 import hashlib, json, pathlib, sys
 from PIL import Image, ImageDraw, ImageFont
@@ -387,6 +393,93 @@ def w_black(u, v):
     return BLACK
 
 
+# ---------------------------------------------------------------- edition B walls (lane N1A, spec v0.2 section 1): ids 5, 6, 7 -----
+# 5 = RED DOOR, 6 = BLUE DOOR: the wood door (id 4, the same planks: seed "plank") with two iron bands (the iron door's straps:
+# dark strap, lit top line, shadow bottom line, one 2x2 bright rivet per plank) instead of the wooden rails, and a square lock
+# plate right of centre between the bands: 1-texel dark outline (reads as the plank seams do), 1-texel bevel (highlight top/left
+# level 15, shadow bottom/right level 9), ONE face tone (level 12), a 2x5 dark keyhole slot. Materials: red = "blood" (id 10), blue =
+# "water" (id 11; chosen over "bluestone" 15 because water is a saturated pure blue that stays blue at every shade, while bluestone
+# is the blue-grey of wall texture 8 = mapc wall code 4, so a bluestone plate would merge with those walls). Levels 15/12/9 give
+# three DISTINCT 3-bit colours at every shade step for both materials.
+# 7 = EXIT PORTAL: the stone wall (id 0, byte-identical texels, so it tiles seamlessly with the stone walls around the exit cell)
+# as a 6-texel frame, a 2-texel gold trim (outer ring gold 14 lit, inner ring gold 11 shadowed = a chamfer), and a 16x16 glowing
+# centre of four concentric rounded rings, ONE flame tone each: 15 (pale yellow) at the centre, 13, 11, 9 (orange) in the corners -
+# all four distinct 3-bit colours at every shade, so the glow keeps its gradient at distance. Review of the in-place render
+# (N1A_inplace.png, first version with a 4-texel frame and a red corner level 6): "the frame reads as a dark red border, not stone"
+# -> wider stone frame, warmer corners.
+BAND_ROWS = ((5, 9), (21, 25))          # (top, bottom) rows of the two iron bands
+PLATE_U0, PLATE_V0, PLATE_W, PLATE_H = 18, 10, 10, 11      # the plate fills the gap between the bands (rows 10..20), right of centre
+PLATE_LEVELS = (15, 12, 9)              # highlight, face, shadow
+KEYHOLE = (4, 5, 3, 7)                  # x0, x1, y0, y1 inside the plate (inclusive): a 2x5 vertical slot
+
+
+def iron_band(u, v):
+    for top, bot in BAND_ROWS:
+        if top <= v <= bot:
+            if v in (top + 1, top + 2) and (u % 8) in (3, 4):
+                return ("iron", 14)                                      # one bright 2x2 rivet per plank
+            return ("iron", 9) if v == top else ("iron", 2) if v == bot else ("iron", 5)
+    return None
+
+
+def in_plate(u, v):
+    return PLATE_U0 <= u < PLATE_U0 + PLATE_W and PLATE_V0 <= v < PLATE_V0 + PLATE_H
+
+
+def lock_plate(u, v, mat):
+    if not in_plate(u, v):
+        return None
+    x, y = u - PLATE_U0, v - PLATE_V0
+    if x in (0, PLATE_W - 1) or y in (0, PLATE_H - 1):
+        return ("dark", 5)                                               # outline (1,1,1), like the plank seams
+    hi, face, lo = PLATE_LEVELS
+    if x == 1 or y == 1:
+        return (mat, hi)
+    if x == PLATE_W - 2 or y == PLATE_H - 2:
+        return (mat, lo)
+    if KEYHOLE[0] <= x <= KEYHOLE[1] and KEYHOLE[2] <= y <= KEYHOLE[3]:
+        return ("dark", 5)                                               # keyhole
+    return (mat, face)
+
+
+def w_keydoor(u, v, mat):
+    return iron_band(u, v) or lock_plate(u, v, mat) or plank(u, v, "plank")
+
+
+def w_reddoor(u, v):
+    return w_keydoor(u, v, "blood")
+
+
+def w_bluedoor(u, v):
+    return w_keydoor(u, v, "water")
+
+
+EXIT_RINGS = ((25, 15), (100, 13), (227, 11))    # (r2 limit in half-texel^2, flame level): radius < 2.5, 5, 7.5 texels; corners = 9
+EXIT_CORNER = 9                                  # levels 15/13/11/9 stay four DISTINCT 3-bit colours at every shade (see N1A_texel_dump.out)
+
+
+def exit_zone(u, v):
+    """'stone' (frame, u or v in 0..5 / 26..31), 'trim_out' (6 / 25), 'trim_in' (7 / 24) or 'glow' (8..23, 16x16)"""
+    r = max(abs(2 * u - 31), abs(2 * v - 31))
+    return "stone" if r > 19 else "trim_out" if r == 19 else "trim_in" if r == 17 else "glow"
+
+
+def w_exit(u, v):
+    z = exit_zone(u, v)
+    if z == "stone":
+        return w_stone(u, v)
+    if z == "trim_out":
+        return ("gold", 14)
+    if z == "trim_in":
+        return ("gold", 11)
+    du2, dv2 = 2 * u - 31, 2 * v - 31
+    r2 = du2 * du2 + dv2 * dv2
+    for limit, level in EXIT_RINGS:
+        if r2 < limit:
+            return ("flame", level)
+    return ("flame", EXIT_CORNER)
+
+
 # ---------------------------------------------------------------- floor textures (16 x 16, u = x east, v = y south) --------------
 def f_flag(u, v):
     return blocks(u, v, "flag", (12, 9), "flag", bw=8, bh=8, period=16, mortar=GROUT, off=0)
@@ -510,6 +603,29 @@ def floor_offset(f, s, u, v):
 
 def select_variant(dais_period8):
     WALLS[5] = ("dais", w_dais_p8 if dais_period8 else w_dais)
+
+
+# edition B (spec v0.2 section 1): ids 5, 6, 7 replaced; 0-4 and 8-15 byte-identical to edition A
+WALLS_B_567 = [("red_door", w_reddoor), ("blue_door", w_bluedoor), ("exit", w_exit)]
+WALLS_A_567 = None          # option A's entries 5, 6, 7 as selected by select_variant (filled by select_edition)
+
+
+def select_edition(edition, dais_period8=True):
+    """'a' = option A's 16 walls (dais variant per dais_period8); 'b' = the same with ids 5, 6, 7 = red door, blue door, exit"""
+    global WALLS_A_567
+    select_variant(dais_period8)
+    if WALLS_A_567 is None:
+        WALLS_A_567 = WALLS[5:8]
+    WALLS[5:8] = WALLS_B_567 if edition == "b" else [("dais", WALLS[5][1])] + WALLS_A_567[1:]
+
+
+def edition_of(argv_or_generator):
+    """'b' when the CLI argv has --edition b or the manifest generator string says so, else 'a'"""
+    if isinstance(argv_or_generator, (list, tuple)):
+        argv = list(argv_or_generator)
+        return argv[argv.index("--edition") + 1].lower() if "--edition" in argv else "a"
+    words = str(argv_or_generator).split()
+    return "b" if "--edition" in words and words[words.index("--edition") + 1].lower() == "b" else "a"
 
 
 def variant_of(argv_or_generator):
@@ -644,7 +760,8 @@ def md5(b):
 
 def generate(argv):
     p8 = variant_of(argv)
-    select_variant(p8)
+    ed = edition_of(argv)
+    select_edition(ed, p8)
     dest = out_dir(argv)
     dest.mkdir(parents=True, exist_ok=True)
     palb = b"".join(pal_entry_bytes(*c) for c in palette_rgb3())
@@ -653,10 +770,14 @@ def generate(argv):
                 "walls": {name: i for i, (name, _) in enumerate(WALLS)},
                 "floors": {name: i for i, (name, _) in enumerate(FLOORS)},
                 "shade_rule": SHADE_RULE,
-                "generator": "tools/nx_textures.py pass2" + (" --dais-period8" if p8 else " --dais-literal")}
+                "generator": "tools/nx_textures.py pass2" + (" --dais-period8" if p8 else " --dais-literal") + (" --edition b" if ed == "b" else "")}
+    if ed == "b":
+        manifest["edition"] = "b"
+        manifest["wallmap"] = WALLMAP_B
+        manifest["edition_b_note"] = EDITION_B_NOTE
     out = {"palette.bin": palb, "walls.bin": walls, "floors.bin": floors,
            "manifest.json": (json.dumps(manifest, indent=1) + "\n").encode()}
-    print("output directory %s (dais variant: %s)" % (dest, "period-8 nosing" if p8 else "spec-literal nosing rows 0-1"))
+    print("output directory %s (edition %s, dais variant: %s)" % (dest, ed.upper(), "period-8 nosing" if p8 else "spec-literal nosing rows 0-1"))
     for name, data in out.items():
         (dest / name).write_bytes(data)
         print("%-14s %6d bytes  md5 %s" % (name, len(data), md5(data)))
@@ -668,6 +789,22 @@ def generate(argv):
               ["F%d" % t for t in range(8)], ["s%d" % s for s in range(4)], [[floor_image(floors, pal, t, s) for s in range(4)] for t in range(8)])
     palette_sheet(dest / "preview_palette.png", pal)
     print("preview_walls.png %dx%d, preview_floors.png %dx%d, preview_palette.png" % (w + f))
+    if "--sheet" in argv:
+        sp = pathlib.Path(argv[argv.index("--sheet") + 1])
+        sp = sp if sp.is_absolute() else ROOT / sp
+        sp.parent.mkdir(parents=True, exist_ok=True)
+        size = sheet(sp, "edition %s walls.bin: 16 wall textures (32x32) x 4 shades, 4x (W5 %s, W6 %s, W7 %s)" % (
+            ed.upper(), WALLS[5][0], WALLS[6][0], WALLS[7][0]), ["W%d %s" % (t, n) for t, (n, _) in enumerate(WALLS)],
+            ["s%d" % s for s in range(4)], [[wall_image(walls, pal, t, s) for s in range(4)] for t in range(16)])
+        print("contact sheet %s %dx%d" % (sp, *size))
+
+
+# spec v0.2 section 1: mapc cell code -> walls.bin id (index 0 = floor, never drawn)
+WALLMAP_B = [0, 0, 1, 3, 8, 2, 13, 14, 4, 5, 6, 0, 7]
+EDITION_B_NOTE = ("edition B (docs/next_engine_spec_v0.2_flat.md section 1): wall ids 0-4 and 8-15 are byte-identical to option A's "
+                  "build/next/assets/walls.bin; 5 = red door (wood door planks + iron bands + blood lock plate), 6 = blue door (water "
+                  "plate), 7 = exit portal (stone frame, gold trim, flame glow). floors.bin and palette.bin are identical to option A's. "
+                  "wallmap[code] = walls id for mapc cell codes 0..12 (0 floor, 1..7 wall, 8 door, 9 red door, 10 blue door, 11 secret, 12 exit).")
 
 
 # ---------------------------------------------------------------- verification (reads the files back) ---------------------------
@@ -693,14 +830,20 @@ def verify(argv=()):
     floors = (src / "floors.bin").read_bytes()
     man = json.loads((src / "manifest.json").read_text())
     p8 = variant_of(man["generator"])
-    select_variant(p8)
-    print("verifying %s (manifest generator: %s -> dais variant %s)" % (src, man["generator"], "period-8" if p8 else "spec-literal"))
+    ed = edition_of(man["generator"])
+    select_edition(ed, p8)
+    print("verifying %s (manifest generator: %s -> edition %s, dais variant %s)" % (src, man["generator"], ed.upper(), "period-8" if p8 else "spec-literal"))
     for name, data in (("palette.bin", palb), ("walls.bin", walls), ("floors.bin", floors)):
         print("%-12s %6d bytes  md5 %s" % (name, len(data), md5(data)))
     check(len(palb) == 512, "palette.bin size %d" % len(palb))
     check(len(walls) == 65536, "walls.bin size %d" % len(walls))
     check(len(floors) == 8192, "floors.bin size %d" % len(floors))
-    check(set(man) == {"materials", "walls", "floors", "shade_rule", "generator"}, "manifest keys %s" % sorted(man))
+    want_keys = {"materials", "walls", "floors", "shade_rule", "generator"} | ({"edition", "wallmap", "edition_b_note"} if ed == "b" else set())
+    check(set(man) == want_keys, "manifest keys %s" % sorted(man))
+    check(man["walls"] == {name: i for i, (name, _) in enumerate(WALLS)}, "manifest wall names match the edition: %s" % man["walls"])
+    if ed == "b":
+        check(man.get("wallmap") == WALLMAP_B and man["walls"]["red_door"] == 5 and man["walls"]["blue_door"] == 6 and man["walls"]["exit"] == 7,
+              "manifest edition B: wallmap + red_door 5 / blue_door 6 / exit 7")
     check(man["materials"] == {m: i for i, m in enumerate(MATERIALS)} and len(man["walls"]) == 16 and len(man["floors"]) == 8, "manifest ids")
     check(list(man["walls"].values()) == list(range(16)) and list(man["floors"].values()) == list(range(8)), "manifest ids are 0..n-1 in order")
     # palette format and content
@@ -751,18 +894,51 @@ def verify(argv=()):
     check(all(walls[wall_offset(15, s, u, v)] == 0 for s in range(4) for u in range(32) for v in range(32)), "W15 black = all index 0")
     check(all(walls[wall_offset(t, 0, u, v)] != 0 for t in range(15) for u in range(32) for v in range(32)), "W0..W14 contain no void texels")
     check(all(floors[floor_offset(f, 0, u, v)] != 0 for f in range(8) for u in range(16) for v in range(16)), "F0..F7 contain no void texels")
-    check(wmats(5, range(0, 2)) == {"gold"}, "W5 dais rows 0-1 gold: %s" % wmats(5, range(0, 2)))
-    check(wmats(5, range(2, 3)) == {"dark"}, "W5 dais row 2 dark: %s" % wmats(5, range(2, 3)))
-    if not p8:
-        check(wmats(5, range(3, 32)) == {"bone", "mortar"}, "W5 dais rows 3-31 bone blocks: %s" % wmats(5, range(3, 32)))
+    if ed == "b":
+        # edition B: W5 red door / W6 blue door = the wood door's planks (rows outside the bands and the plate byte-identical to W4),
+        # iron bands, ONE lock plate (blood / water) with a dark outline and keyhole; W7 exit = stone frame, gold trim, flame glow
+        for t, mat in ((5, "blood"), (6, "water")):
+            same = sum(1 for u in range(32) for v in range(32)
+                       if not (in_plate(u, v) or any(a <= v <= b for a, b in BAND_ROWS)) and walls[wall_offset(t, 0, u, v)] == walls[wall_offset(4, 0, u, v)])
+            total = sum(1 for u in range(32) for v in range(32) if not (in_plate(u, v) or any(a <= v <= b for a, b in BAND_ROWS)))
+            check(same == total, "W%d planks outside bands/plate identical to W4 wood door: %d of %d" % (t, same, total))
+            check(all(wmats(t, range(a, b + 1)) == {"iron"} for a, b in BAND_ROWS), "W%d iron bands rows %s are iron only: %s" % (t, BAND_ROWS, [wmats(t, range(a, b + 1)) for a, b in BAND_ROWS]))
+            pm = {MATERIALS[walls[wall_offset(t, 0, u, v)] >> 4] for u in range(32) for v in range(32) if in_plate(u, v)}
+            check(pm == {mat, "dark"}, "W%d lock plate = %s + dark outline/keyhole: %s" % (t, mat, pm))
+            check(mat not in wmats(t, range(0, PLATE_V0)) and mat not in wmats(t, range(PLATE_V0 + PLATE_H, 32)), "W%d %s only on the plate" % (t, mat))
+            face = {walls[wall_offset(t, 0, u, v)] for u in range(PLATE_U0 + 2, PLATE_U0 + PLATE_W - 2) for v in range(PLATE_V0 + 2, PLATE_V0 + PLATE_H - 2)
+                    if MATERIALS[walls[wall_offset(t, 0, u, v)] >> 4] == mat}
+            check(len(face) == 1, "W%d plate face ONE tone: %s" % (t, face))
+        check(wmats(5) == {"wood", "dark", "iron", "blood"}, "W5 red door materials: %s" % wmats(5))
+        check(wmats(6) == {"wood", "dark", "iron", "water"}, "W6 blue door materials: %s" % wmats(6))
+        check(wmats(7) == {"stone", "mortar", "gold", "flame"}, "W7 exit materials: %s" % wmats(7))
+        frame_same = sum(1 for u in range(32) for v in range(32) if exit_zone(u, v) == "stone" and walls[wall_offset(7, 0, u, v)] == walls[wall_offset(0, 0, u, v)])
+        frame_n = sum(1 for u in range(32) for v in range(32) if exit_zone(u, v) == "stone")
+        check(frame_same == frame_n, "W7 stone frame identical to W0 stone: %d of %d texels" % (frame_same, frame_n))
+        check({MATERIALS[walls[wall_offset(7, 0, u, v)] >> 4] for u in range(32) for v in range(32) if exit_zone(u, v) == "glow"} == {"flame"}, "W7 glow = flame only")
+        centre = walls[wall_offset(7, 0,15, 15)] & 15
+        edge = walls[wall_offset(7, 0, 6, 15)] & 15
+        check(centre > edge and centre == 15, "W7 glow brightest at the centre (centre level %d, edge level %d)" % (centre, edge))
+        # the per-block identity with option A: ids 0-4 and 8-15 unchanged (the generator's own A build)
+        select_edition("a", p8)
+        walls_a = build_walls()
+        select_edition("b", p8)
+        same_blocks = [t for t in range(16) if walls[t * 4096:(t + 1) * 4096] == walls_a[t * 4096:(t + 1) * 4096]]
+        check(same_blocks == [0, 1, 2, 3, 4, 8, 9, 10, 11, 12, 13, 14, 15], "edition B: 4 KB blocks identical to edition A exactly for ids 0-4, 8-15: %s" % same_blocks)
+        check(floors == build_floors(), "edition B floors.bin identical to edition A's")
     else:
-        check(all(wmats(5, range(c * 8 + 3, c * 8 + 8)) == {"bone", "mortar"} for c in range(4)), "W5 period-8 dais: bone courses")
-        check(all(wmats(5, range(c * 8, c * 8 + 2)) == {"gold"} and wmats(5, range(c * 8 + 2, c * 8 + 3)) == {"dark"} for c in range(4)),
-              "W5 period-8 dais: gold nosing rows 0-1 + dark shadow row 2 of every 8-row course (so every 0.25-cell riser shows its gold edge)")
-    check(wmats(6, range(0, 3)) == {"dark"}, "W6 lintel rows 0-2 dark course: %s" % wmats(6, range(0, 3)))
-    check(wmats(6, range(3, 5)) == {"gold"}, "W6 lintel rows 3-4 gold: %s" % wmats(6, range(3, 5)))
-    check(wmats(6, range(5, 32)) == {"stone", "mortar"}, "W6 lintel rows 5-31 stone: %s" % wmats(6, range(5, 32)))
-    check(wmats(7) == {"bone", "mortar", "gold"}, "W7 altar face bone + gold diamond: %s" % wmats(7))
+        check(wmats(5, range(0, 2)) == {"gold"}, "W5 dais rows 0-1 gold: %s" % wmats(5, range(0, 2)))
+        check(wmats(5, range(2, 3)) == {"dark"}, "W5 dais row 2 dark: %s" % wmats(5, range(2, 3)))
+        if not p8:
+            check(wmats(5, range(3, 32)) == {"bone", "mortar"}, "W5 dais rows 3-31 bone blocks: %s" % wmats(5, range(3, 32)))
+        else:
+            check(all(wmats(5, range(c * 8 + 3, c * 8 + 8)) == {"bone", "mortar"} for c in range(4)), "W5 period-8 dais: bone courses")
+            check(all(wmats(5, range(c * 8, c * 8 + 2)) == {"gold"} and wmats(5, range(c * 8 + 2, c * 8 + 3)) == {"dark"} for c in range(4)),
+                  "W5 period-8 dais: gold nosing rows 0-1 + dark shadow row 2 of every 8-row course (so every 0.25-cell riser shows its gold edge)")
+        check(wmats(6, range(0, 3)) == {"dark"}, "W6 lintel rows 0-2 dark course: %s" % wmats(6, range(0, 3)))
+        check(wmats(6, range(3, 5)) == {"gold"}, "W6 lintel rows 3-4 gold: %s" % wmats(6, range(3, 5)))
+        check(wmats(6, range(5, 32)) == {"stone", "mortar"}, "W6 lintel rows 5-31 stone: %s" % wmats(6, range(5, 32)))
+        check(wmats(7) == {"bone", "mortar", "gold"}, "W7 altar face bone + gold diamond: %s" % wmats(7))
     check(wmats(2) == {"stone", "mortar", "moss"}, "W2 moss = stone + moss patches: %s" % wmats(2))
     check(wmats(9) == {"bone", "mortar", "dark"}, "W9 bone wall = skulls on dark ground: %s" % wmats(9))
     check("gold" not in fmats(2) and fmats(2) == {"stone"}, "F2 vault: stone ribs only, no gold studs: %s" % fmats(2))

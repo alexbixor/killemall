@@ -1,0 +1,10 @@
+; boss dead (M4 v5) - the heap: the crowned grinning skull on its back at the left, body heap with the claw flung up
+; at the right, the cannon tube (white edges, black core) lying along the floor under them (8 rows)
+................
+#.#.#...........
+#####.......#.#.
+#oo#oo#..#######
+#######..#######
+#o#o#o#.########
+#######.#oooooo#
+################

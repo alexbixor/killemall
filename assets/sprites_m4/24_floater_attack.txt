@@ -1,0 +1,22 @@
+; floater attack (M4 v4) - spit: the ringed eye is KEPT (squeezed to 5 rows: ring, iris, pupil), the mouth gapes
+; 6 rows with upper and lower fangs, a spit blob leaves the chin downward (2 white pixels)
+..##........##..
+..###..##..###..
+..############..
+.##############.
+######ooooo#####
+#####oo###oo####
+#####o#oo##o####
+#####oo###oo####
+######ooooo#####
+#oooooooooooooo#
+#o#oo#oooo#oo#o#
+oooooooooooooooo
+oooooooooooooooo
+#oo#oo#oooo#oo##
+##oooooooooooo##
+.##############.
+..####.##.####..
+.......##.......
+................
+................

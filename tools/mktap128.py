@@ -79,7 +79,9 @@ def main():
     start, code = code_block(pathlib.Path(sys.argv[1]).read_bytes())
     CLEAR = start - 1                                   # M2.5C: RAMTOP just below the first loaded byte
     bank1 = pathlib.Path(sys.argv[2]).read_bytes(); scr = pathlib.Path(sys.argv[3]).read_bytes(); out = pathlib.Path(sys.argv[4])
-    assert len(scr) == 6912 and start > CLEAR and start + len(code) <= 65008 and len(bank1) <= 16384
+    # lane G (5 Nov 2026): the image ends at 0FFF0h now (ETAB + enemy step code at 0FF01h, above the IM2 table): the bytes it
+    # loads over the stack / TABLE area (hi_end..0FF00h = zeros) are rewritten by start; the loader's own stack is below RAMTOP.
+    assert len(scr) == 6912 and start > CLEAR and start + len(code) <= 65536 and len(bank1) <= 16384
     prog = basic_loader()
     tape = header(0, "killemall", len(prog), 10, len(prog)) + tap_block(0xFF, prog)
     tape += header(3, "title", 6912, 16384, 32768) + tap_block(0xFF, scr)

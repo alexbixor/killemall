@@ -1,0 +1,13 @@
+; barrel - cylinder with three dark bands (M2.1: 12 rows = half the 24-row box -> top on the horizon like the health pack)
+...##########...
+.##############.
+.#oooooooooooo#.
+.##############.
+.##############.
+.#oooooooooooo#.
+.##############.
+.##############.
+.#oooooooooooo#.
+.##############.
+.##############.
+...##########...

@@ -9,7 +9,7 @@
 ; ray column that drew white pixels; attr.asm (attr_write, after COPYBUF) turns the marks into attribute writes and clears them.
 
 ; ds_inkl (draw_sprite's ink lookup) lives in ../common/blood.asm since M2.6 blood 1 (3 Nov 2026): it grew by 12 bytes
-; for the red flash and this low block had 4 bytes left. INKTAB and ds_ink below stay here.
+; for the red flash and this low block had 4 bytes left. ds_ink below stays here (INKTAB -> etab.asm, lane G).
 
 ; dc_white: sprites_f.asm dc_run_l, white run of B rows from buffer row C (B, C, DE, HL kept): widen this ray column's white
 ; rows. Runs are visited top -> bottom, so the first white run gives dc_wlo and the last one dc_whi. Returns with Z set
@@ -71,12 +71,8 @@ dm2:    or e                   ; ink of the sprite drawn last (nearest) in this 
         ld (hl),a
         ret
 
-; INKTAB[type and 31] = ink << 4 (0 = keeps the window ink). Enemies (sprites_b.asm THSPR): 1 / 7 imp BRIGHT magenta,
-; 2..6 zombie BRIGHT green. Items: 16 health red, 17 ammo yellow, 18 red key, 19 blue key, 20 shield cyan; 21..23 barrel /
-; lamp none. Types are < 24 (THSPR has 24 entries); attr_write adds BRIGHT (0x40).
-INKTAB: defb 0,0x30,0x40,0x40,0x40,0x40,0x40,0x30
-        defb 0,0,0,0,0,0,0,0
-        defb 0x20,0x60,0x20,0x10,0x50,0,0,0
+; INKTAB (24 B) moved into ETAB +9 / ITINK (../common/etab.asm) by lane G, 5 Nov 2026: enemies 1 imp BRIGHT magenta,
+; 2 zombie BRIGHT green; items 16 health red, 17 ammo yellow, 18 red key, 19 blue key, 20 shield cyan; 21..23 none.
 ds_ink:  defb 0                ; ink << 4 of the sprite being drawn (0 = none)
 dc_bcol: defb 0                ; byte column of the ray column being blitted
 dc_wlo:  defb 255              ; first row of white sprite pixels in this ray column (255 = none yet)

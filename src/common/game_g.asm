@@ -51,8 +51,8 @@ hs_l:   push hl
         push hl
         pop ix
         ld a,(ix+0)
-        cp 3
-        jr nc,hs_next          ; not an enemy (items/decor let the shot pass)
+        cp 7
+        jr nc,hs_next          ; not an enemy (items/decor let the shot pass); lane G: types 1..6 (ETAB rows)
         ld a,(ix+5)
         cp 3
         jr z,hs_next           ; already dead

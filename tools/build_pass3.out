@@ -1,0 +1,15 @@
+## apt rc=0
+## build rc=0 at 16:56Z
+## bin: 24 files; clibs: 353 libs; zx clibs: zx_clib.lib zxn_clib.lib 
+9633:*** Makeinfo is missing. Info documentation will not be built.
+11640:Makefile:27: *** mixed implicit and normal rules: deprecated syntax
+11708:Makefile:27: *** mixed implicit and normal rules: deprecated syntax
+## zx hello rc=1 
+## zxn hello rc=1 
+error: unexpected argument '-2' found
+
+  tip: to pass '-2' as a value, use '-- -2'
+
+Usage: tail [FLAG]... [FILE]...
+
+For more information, try '--help'.

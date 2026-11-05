@@ -1,0 +1,13 @@
+.venv/
+tools/zesarux/
+tools/zesarux.tgz
+tools/z88dk/
+tools/z88dk-src-2.4.tgz
+build/night/*_frames/
+build/night/V_48k/
+build/night/V_128k/
+build/night/*.mp4
+build/*.mp4
+build/night/M_frames/
+*.pyc
+__pycache__/

@@ -1,0 +1,13 @@
+; health - white box with a thick dark cross
+.##############.
+################
+######oooo######
+######oooo######
+##oooooooooooo##
+##oooooooooooo##
+##oooooooooooo##
+######oooo######
+######oooo######
+################
+################
+.##############.

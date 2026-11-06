@@ -12,7 +12,9 @@
 ;   mag = (|lat| * R) >> 11 ; cx = 64 + mag (lat >= 0) or 64 - mag ; c0 = cx - (w >> 1) ; skip if mag > 255, c0 >= 128 or c0 + w <= 0
 ;   feet = min(96, (12288 + 22*R + 127) >> 8)  (the walker's ROW(y_floor(d)) for eye 22) ; top = feet - h
 ;   VIS_B entry (depth, c0, w, h, feet, thing) inserted far -> near (depth descending), 16 max (the farther ones are kept)
-;   art id: enemies SPRBASE_B[type] + (state 0: 0 ; 1: (ticks >> 4) & 1 ; 2: 2 ; 3: 3), items ITSPR_B[type - 16]; ids >= 30 -> 26
+;   art id: enemies SPRBASE_B[type] + (state 0: 0 ; 1: (ticks >> 4) & 1 ; 2: 2 ; 3: 3), items ITSPR_B[type - 16]
+;   lane N3: ids 30..34 (boss) live in 8K bank 30 (16K bank 15, nx_sprites_b.py --out2, nx_build.py --sprites2) at C000h +
+;   (id-30)*512: draw_sprite_b pages slot 6 = SPR_BANK2 for such an entry and back to SPR_BANK0 after it (ids < 18 use bank 26).
 ;   column c in [max(c0, 0), min(c0 + w, 128)): drawn iff ZBUF[c] > depth ; u = ((c - c0) * RECIP[w]) >> 12 (0..15)
 ;   row r in [max(top, 0), min(feet, 96)): v = ((r - top) * ((RECIP[h] * 24) >> 5)) >> 11 (0..23) ; pixel = art[u*32 + v] ; 0 = skip
 ; Z80N: mul d,e = db 0EDh,030h ; add hl,a = db 0EDh,031h ; nextreg r,v = db 0EDh,091h,r,v ; nextreg r,a = db 0EDh,092h,r
@@ -513,7 +515,15 @@ ds_item:
 ds_art_a:
         cp 30
         jr c,ds_art_ok
-        ld a,26                         ; boss art not in the bank: brute art (N2_QUESTIONS.md)
+        sub 30                          ; lane N3: boss ids 30..34 in 8K bank 30 at C000h + (id-30)*512 (slot 6 re-paged)
+        add a,a
+        add a,0C0h
+        ld h,a
+        ld l,0
+        db 0EDh,091h,56h,SPR_BANK2
+        call ds_art_set
+        db 0EDh,091h,56h,SPR_BANK0      ; back to the ids 0..13 bank for the next entry (draw_vis walks on)
+        ret
 ds_art_ok:
         cp 18
         jr nc,ds_art_hi

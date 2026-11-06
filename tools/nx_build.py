@@ -24,6 +24,14 @@ Edition B options (lane N1A, docs/next_engine_spec_v0.2_flat.md section 1 and 6)
   --sprites FILE      lane N2 (5 Nov 2026): a 16K image packed as 16K bank 13 (= 8K banks 26/27, software sprite data for
                       src/next/sprites_next.asm, built by tools/nx_sprites_b.py). Default absent -> no bank 13 -> the .nex is
                       byte-identical to the build without this option (proven in build/night/N2_build_identity.out).
+  --levels FILE       lane N3 (5 Nov 2026): a multi-level mapc 'next' file (up to 8 levels); level k is packed into the 2048-byte
+                      slot k of 16K bank 14 (= 8K banks 28/29: slot k at 8K bank 28 + (k >> 2), offset (k & 3) * 2048) with
+                      bytes 2045..2047 of the slot = ceil, ftex, ctex of the matching level .txt (--levels-txt). LEVEL at 0B800h
+                      still gets level --level-index of --level (default 0) as before. Default absent -> no bank 14.
+  --levels-txt X      lane N3: a directory holding the level .txt files (sorted, one per level of --levels) or a comma-separated
+                      list of .txt paths; a missing file -> the defaults (32, flag, plaster), as --level-txt does.
+  --sprites2 FILE     lane N3: a second sprite image (<= 16K) packed as 16K bank 15 (= 8K banks 30/31): boss ids 30..34 from
+                      tools/nx_sprites_b.py --out2. Default absent -> no bank 15.
 Prints the code size, the symbols that matter, what was poked and the .nex path; exit code 0 only when everything was built."""
 import argparse, json, pathlib, subprocess, sys
 HERE = pathlib.Path(__file__).resolve().parent
@@ -136,7 +144,31 @@ def poke_header(img, syms, hb, opts):
         img[addr - CODE_BASE] = hb[key]
         print("poked %s (%04Xh) = %d (%s = %s)" % (sym, addr, hb[key], key, opts[key]))
 
-def build(src="src/next/main.asm", out="build/next/killemall_next.nex", bin_name="main", assets=None, level=None, level_index=0, level_txt=None, sprites=None):
+def levels_bank(levels_path, levels_txt, assets):
+    """lane N3: the 16K image of bank 14: slot k (2048 bytes) = level k of the mapc file, bytes 2045..2047 = ceil, ftex, ctex"""
+    levels = mapc_levels((ROOT / levels_path).read_bytes())
+    if len(levels) > 8:
+        sys.exit("ERROR: --levels %s holds %d levels, bank 14 has 8 slots" % (levels_path, len(levels)))
+    txts = []
+    if levels_txt is not None:
+        p = ROOT / levels_txt
+        txts = sorted(p.glob("[0-9][0-9]_*.txt")) if p.is_dir() else [ROOT / t for t in str(levels_txt).split(",") if t]
+    img = bytearray(16384)
+    for k, lv in enumerate(levels):
+        if len(lv) > LEVEL_SIZE - 3:
+            sys.exit("ERROR: level %d is %d bytes, a bank 14 slot holds %d (+3 header bytes)" % (k, len(lv), LEVEL_SIZE - 3))
+        txt = txts[k] if k < len(txts) and pathlib.Path(txts[k]).exists() else None
+        hb = header_bytes(level_header_options(txt), assets)
+        img[k * LEVEL_SIZE:k * LEVEL_SIZE + len(lv)] = lv
+        img[k * LEVEL_SIZE + LEVEL_SIZE - 3:k * LEVEL_SIZE + LEVEL_SIZE] = bytes([hb["ceil"], hb["ftex"], hb["ctex"]])
+        hdr = lv[:8]
+        print("levels slot %d (8K bank %d offset %04Xh): %d bytes start (%d, %d) angle %d things %d ; ceil/ftex/ctex %d/%d/%d from %s" % (
+            k, 28 + (k >> 2), (k & 3) * LEVEL_SIZE, len(lv), hdr[4], hdr[5], hdr[6], hdr[7], hb["ceil"], hb["ftex"], hb["ctex"],
+            pathlib.Path(txt).relative_to(ROOT) if txt else "defaults"))
+    return bytes(img), len(levels)
+
+def build(src="src/next/main.asm", out="build/next/killemall_next.nex", bin_name="main", assets=None, level=None, level_index=0, level_txt=None, sprites=None,
+          levels=None, levels_txt=None, sprites2=None):
     src = ROOT / src
     out = ROOT / out
     assets = ASSETS if assets is None else (ROOT / assets)
@@ -176,6 +208,14 @@ def build(src="src/next/main.asm", out="build/next/killemall_next.nex", bin_name
         assert len(spr) <= 16384, "--sprites image must be <= 16384 bytes (got %d)" % len(spr)
         banks[13] = spr.ljust(16384, b"\0")
         print("sprites %s: %d bytes -> 16K bank 13 (8K banks 26/27)" % (sprites, len(spr)))
+    if levels is not None:
+        banks[14], n_lv = levels_bank(levels, levels_txt, assets)
+        print("levels %s: %d levels -> 16K bank 14 (8K banks 28/29), 2048-byte slots" % (levels, n_lv))
+    if sprites2 is not None:
+        spr2 = (ROOT / sprites2).read_bytes()
+        assert len(spr2) <= 16384, "--sprites2 image must be <= 16384 bytes (got %d)" % len(spr2)
+        banks[15] = spr2.ljust(16384, b"\0")
+        print("sprites2 %s: %d bytes -> 16K bank 15 (8K banks 30/31)" % (sprites2, len(spr2)))
     build_nex(out, banks, pc=0x8000, sp=0x5F00)
     print("wrote %s (%d bytes; banks %s; PC 8000h SP 5F00h; palette at %04Xh, level at %04Xh; assets %s)" % (
         out.relative_to(ROOT), out.stat().st_size, sorted(banks), PALETTE_ADDR, LEVEL_ADDR, assets.relative_to(ROOT) if assets.is_relative_to(ROOT) else assets))
@@ -191,5 +231,8 @@ if __name__ == "__main__":
     ap.add_argument("--level-index", type=int, default=0, help="which level of a multi-level mapc file (default 0)")
     ap.add_argument("--level-txt", default=None, help="level .txt whose #ceil= #ftex= #ctex= header lines are poked at CEIL_B/FTEX_B/CTEX_B")
     ap.add_argument("--sprites", default=None, help="lane N2: 16K sprite image packed as 16K bank 13 (default: no bank 13, output unchanged)")
+    ap.add_argument("--levels", default=None, help="lane N3: multi-level mapc .bin packed as 2048-byte slots of 16K bank 14 (default: no bank 14)")
+    ap.add_argument("--levels-txt", default=None, help="lane N3: directory of level .txt files (sorted) or a comma list; ceil/ftex/ctex per slot")
+    ap.add_argument("--sprites2", default=None, help="lane N3: second sprite image (boss ids 30..34) packed as 16K bank 15 (default: no bank 15)")
     a = ap.parse_args()
-    build(a.src, a.out, a.bin_name, a.assets, a.level, a.level_index, a.level_txt, a.sprites)
+    build(a.src, a.out, a.bin_name, a.assets, a.level, a.level_index, a.level_txt, a.sprites, a.levels, a.levels_txt, a.sprites2)

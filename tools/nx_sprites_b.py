@@ -12,7 +12,11 @@ column data. Format (src/next/sprites_next.asm reads it):
     (1024 bytes each, rows 0..23); ids 18..29 (shotgunner, floater, brute) at +2048 + (id-18)*512. Ids 16/17 (shotgun),
     30..34 (boss) and 35/36 (chaingun) are NOT in the bank (no level of this lane places type 6; filed in N2_QUESTIONS.md).
 Also adds "sprites_b" to <assets>/manifest.json (backed up to build/night/pre_N2/ first) and prints a size report.
-Deterministic. Usage: .venv/bin/python tools/nx_sprites_b.py [--src assets/sprites_m4] [--out build/next/assets_b/sprites_b.bin]"""
+lane N3 (5 Nov 2026): --out2 FILE writes a SECOND 16K image (16K bank 15 = 8K bank 30 + an empty 8K bank 31) with the boss
+ids 30..34 at (id-30)*512 (16 cols x 32 B, ink bone 222 so the boss differs from the rust brute, "dark" 225 for 'o'); without --out2 the first image
+and the manifest are byte-identical to lane N2's output (the manifest is only written when --out2 is absent).
+Deterministic. Usage: .venv/bin/python tools/nx_sprites_b.py [--src assets/sprites_m4] [--out build/next/assets_b/sprites_b.bin]
+                                                              [--out2 build/next/assets_b/sprites2_b.bin]"""
 import argparse, hashlib, json, pathlib, shutil, sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -31,9 +35,11 @@ INK[14] = INK[15] = 4 * 16 + 14                  # pistol: iron 78
 for i in range(18, 22): INK[i] = 8 * 16 + 14     # shotgunner: gold 142 (yellow)
 for i in range(22, 26): INK[i] = 11 * 16 + 14    # floater: water 190 (cyan)
 for i in range(26, 30): INK[i] = 12 * 16 + 14    # brute: rust 206 (red-brown)
+for i in range(30, 35): INK[i] = 13 * 16 + 14    # boss (lane N3, second bank): bone 222 (pale), distinct from the brute's rust
 BANK26 = list(range(0, 14))
 BANK27 = {14: 0, 15: 1024}
 for i in range(18, 30): BANK27[i] = 2048 + (i - 18) * 512
+BANK30 = {i: (i - 30) * 512 for i in range(30, 35)}   # lane N3: boss walk_a, walk_b, attack, fall, dead
 
 
 def load(path):
@@ -59,6 +65,7 @@ def main():
     ap.add_argument("--src", default="assets/sprites_m4")
     ap.add_argument("--out", default="build/next/assets_b/sprites_b.bin")
     ap.add_argument("--no-manifest", action="store_true")
+    ap.add_argument("--out2", default=None, help="lane N3: second 16K image (bank 15 / 8K bank 30) with the boss ids 30..34")
     a = ap.parse_args()
     src = ROOT / a.src
     files = {int(p.name[:2]): p for p in sorted(src.glob("[0-9][0-9]_*.txt"))}
@@ -79,6 +86,17 @@ def main():
     md5 = hashlib.md5(bank).hexdigest()
     print("\n".join(report))
     print("wrote %s: %d bytes md5 %s; lit pixels %d" % (out.relative_to(ROOT), len(bank), md5, sum(1 for b in bank if b)))
+    if a.out2 is not None:
+        bank2 = bytearray(16384); rep2 = []
+        for i, off in sorted(BANK30.items()):
+            rows = load(files[i]); data = convert(rows, INK[i], 16)
+            bank2[off:off + len(data)] = data
+            rep2.append("id %2d %-22s %2d rows ink %3d -> bank 30 +%04X" % (i, files[i].stem, len(rows), INK[i], off))
+        out2 = ROOT / a.out2
+        out2.write_bytes(bytes(bank2))
+        print("\n".join(rep2))
+        print("wrote %s: %d bytes md5 %s; lit pixels %d" % (out2.relative_to(ROOT), len(bank2), hashlib.md5(bank2).hexdigest(), sum(1 for b in bank2 if b)))
+        return
     if not a.no_manifest:
         man = out.parent / "manifest.json"
         txt = man.read_text()

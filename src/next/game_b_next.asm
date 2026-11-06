@@ -13,9 +13,16 @@
 ;               blocked by solid cells; adjacent (< 0.7 cell) -> melee attack after `timer` steps; ranged types (flags b1):
 ;               0 < dist <= range and LOS -> stand, timer, at `timer` a hit-scan hit (proposal A: 50 % miss beyond 3 cells on
 ;               bit 0 of ticks), attack frame 5 steps. Shield absorbs first (e_hurt).
+;               lane N3 melee fix (N3_BRIEF task 1): (a) a chase step that would leave |dx| AND |dy| < 128 (0.5 cell) is not
+;               taken, so enemies stop half a cell away instead of walking into the player; the melee test (|dx|, |dy| < 180)
+;               is made from either side (N2 gated it on the signed-high-byte distance being 0, true only for positive deltas).
 ;   pistol      game_f.asm fire_action + game_g.asm hitscan: ammo > 0 and no cooldown (12 steps): ammo -1, fire frame, the
 ;               nearest VIS_B entry covering the centre column (c0 <= 65 and c0 + w >= 63) with ZBUF[64] > its depth and an
 ;               enemy alive takes 1 hit (= 10 hp); 0 hits left -> dead (state 3), kills + 1; a hit enemy wakes (state 1).
+;               lane N3 (b): when VIS_B gives no hit, melee_scan accepts the nearest (smallest camera depth >= 0) living enemy
+;               with |dx|, |dy| < 180 and |lateral| < 128 (lateral = smul_shr(dx, plx, 8) + smul_shr(dy, ply, 8)).
+;   levels      lane N3: NLEVELS_B = 8 slots of 2048 bytes in 16K bank 14 (8K banks 28/29, tools/nx_build.py --levels);
+;               load_level_b pages slot 6, copies slot g_level to LEVEL, bytes 2045..2047 -> CEIL_B/FTEX_B/CTEX_B + wb_*.
 ; Z80N: mul d,e = db 0EDh,030h ; add hl,a = db 0EDh,031h.
 
 ; ---------------------------------------------------------------- init / restart
@@ -159,7 +166,7 @@ gs_one: ld a,(hl)
 game_tick:
         ld a,(g_freeze)
         or a
-        jr z,gt_live
+        jp z,gt_live            ; lane N3: jp (load_level_b/level_request sit between here and gt_live)
         dec a
         ld (g_freeze),a
         ret nz
@@ -175,14 +182,60 @@ game_tick:
         ld (g_shield),a
         jp restart_level
 gt_next_level:
-        ld a,(g_level)          ; game_d.asm level_clear: level + 1; NLEVELS_B = 1 -> back to level 0 (N2_QUESTIONS.md)
+        ld a,(g_level)          ; game_d.asm level_clear: level + 1; after level NLEVELS_B - 1 back to level 0 (lane N3)
         inc a
         cp NLEVELS_B
         jr c,gt_nl_ok
         xor a
 gt_nl_ok:
         ld (g_level),a
+        call load_level_b
         jp restart_level
+
+; load_level_b (lane N3): LEVEL <- slot g_level of 16K bank 14 (8K bank 28 + (k >> 2), offset (k & 3) * 2048, 2048 bytes),
+; the slot's bytes 2045..2047 (ceil, ftex, ctex poked by nx_build.py --levels) -> CEIL_B/FTEX_B/CTEX_B and the walker's
+; wb_ceil/wb_ftex/wb_ctex; the door log is dropped (its pointers belong to the previous level); slot 6 back to WALL_BANK0.
+load_level_b:
+        ld a,(g_level)
+        ld c,a
+        rrca
+        rrca
+        and 1                   ; k >> 2 (k < 8)
+        add a,LEVEL_BANK0
+        db 0EDh,092h,56h        ; nextreg 56h,a : slot 6 = 8K bank 28 + (k >> 2)
+        ld a,c
+        and 3
+        add a,a
+        add a,a
+        add a,a                 ; (k & 3) * 8 = high byte of (k & 3) * 2048
+        add a,0C0h
+        ld h,a
+        ld l,0
+        ld de,LEVEL
+        ld bc,2048
+        ldir
+        db 0EDh,091h,56h,WALL_BANK0
+        xor a
+        ld (g_door_n),a
+        ld a,(LV_HDR3)
+        ld (CEIL_B),a
+        ld (wb_ceil),a
+        ld a,(LV_HDR3+1)
+        ld (FTEX_B),a
+        ld (wb_ftex),a
+        ld a,(LV_HDR3+2)
+        ld (CTEX_B),a
+        ld (wb_ctex),a
+        ret
+; level_request (lane N3 tool hook, main_loop): g_lvreq = 1 -> load level g_level and restart it, then clear the request
+level_request:
+        xor a
+        ld (g_lvreq),a
+        call load_level_b
+        call restart_level
+        xor a
+        ld (g_moved),a
+        jp setup_camera_b       ; the frame drawn right after uses the new camera
 gt_live:
         ld a,(g_keys)
         bit KB_FWD,a
@@ -501,10 +554,8 @@ enemy_think:
         ld a,c
 et_d:   ld (e_dist),a           ; Chebyshev distance in cells (signed high bytes)
         cp (iy+6)
-        jr nc,et_idle           ; beyond the wake radius
-        or a
-        jr nz,et_notadj
-        call near_player07
+        jp nc,et_idle           ; beyond the wake radius (lane N3: jp, et_chase grew)
+        call near_player07      ; lane N3: melee range (|dx|, |dy| < 0.7 cell) from either side (see the header)
         jp c,et_attack
 et_notadj:
         bit 1,(iy+7)
@@ -526,6 +577,29 @@ et_chase:
         ld (ix+7),0
         ld hl,(e_dx)
         call step_axis
+        ld (e_sx),hl
+        ld hl,(e_dy)
+        call step_axis
+        ld (e_sy),hl
+        ; lane N3 melee fix (a): a step that would leave |dx| AND |dy| < 128 (0.5 cell) is not taken
+        ld hl,(e_dx)
+        ld de,(e_sx)
+        add hl,de
+        call abs16
+        ld de,128
+        or a
+        sbc hl,de
+        jr nc,et_move           ; |dx'| >= 128: the step is fine
+        ld hl,(e_dy)
+        ld de,(e_sy)
+        add hl,de
+        call abs16
+        ld de,128
+        or a
+        sbc hl,de
+        ret c                   ; both < 128: stay where it is
+et_move:
+        ld hl,(e_sx)
         ld c,(ix+1)
         ld b,(ix+2)
         add hl,bc
@@ -538,8 +612,7 @@ et_chase:
         jr nz,et_y
         ld (ix+1),l
         ld (ix+2),h
-et_y:   ld hl,(e_dy)
-        call step_axis
+et_y:   ld hl,(e_sy)
         ld c,(ix+3)
         ld b,(ix+4)
         add hl,bc
@@ -714,7 +787,7 @@ fire_action:
         ; hitscan over VIS_B (far -> near): walk from the nearest (last) entry back
         ld a,(g_nvis)
         or a
-        ret z
+        jr z,melee_scan         ; lane N3: no vis entry -> the melee-range rule
         ld b,a
         dec a
         add a,a
@@ -777,7 +850,86 @@ hs_next:
         or a
         sbc hl,de
         djnz hs_l
-        ret
+        ; fall into melee_scan: nothing in the vis list took the shot
+; melee_scan (lane N3, N3_BRIEF task 1b): the nearest living enemy (smallest camera depth >= 0) with |dx|, |dy| < 180 (0.7 cell)
+; and |lateral| < 128 (0.5 cell) takes the hit; lateral/depth use plx/ply/dirx/diry of the camera (setup_camera_b).
+melee_scan:
+        ld hl,0
+        ld (ms_ptr),hl
+        ld hl,7FFFh
+        ld (ms_best),hl
+        ld ix,THINGS_B
+        ld b,NTHINGS_B
+ms_l:   push bc
+        ld a,(ix+0)
+        or a
+        jp z,ms_next
+        cp 7
+        jp nc,ms_next           ; items
+        ld a,(ix+5)
+        cp 3
+        jp z,ms_next            ; dead
+        ld l,(ix+1)
+        ld h,(ix+2)
+        ld de,(px)
+        or a
+        sbc hl,de
+        ld (e_dx),hl
+        ld l,(ix+3)
+        ld h,(ix+4)
+        ld de,(py)
+        or a
+        sbc hl,de
+        ld (e_dy),hl
+        call near_player07
+        jp nc,ms_next           ; not within 0.7 cell on both axes
+        ld hl,(e_dx)
+        ld de,(plx)
+        call smul8
+        push hl
+        ld hl,(e_dy)
+        ld de,(ply)
+        call smul8
+        pop de
+        add hl,de               ; lateral
+        call abs16
+        ld de,128
+        or a
+        sbc hl,de
+        jr nc,ms_next           ; |lateral| >= 128: not in front
+        ld hl,(e_dx)
+        ld de,(dirx)
+        call smul8
+        push hl
+        ld hl,(e_dy)
+        ld de,(diry)
+        call smul8
+        pop de
+        add hl,de               ; depth
+        bit 7,h
+        jr nz,ms_next           ; behind the player
+        ld de,(ms_best)
+        or a
+        sbc hl,de
+        jr nc,ms_next           ; depth >= best so far
+        add hl,de
+        ld (ms_best),hl
+        push ix
+        pop hl
+        ld (ms_ptr),hl
+ms_next:
+        ld de,8
+        add ix,de
+        pop bc
+        dec b
+        jp nz,ms_l              ; (the loop body is too long for djnz)
+        ld hl,(ms_ptr)
+        ld a,h
+        or l
+        ret z
+        push hl
+        pop ix
+        jp enemy_hit
 enemy_hit:
         ld a,(ix+6)
         dec a                   ; one pistol hit = 10 hp = 1 unit

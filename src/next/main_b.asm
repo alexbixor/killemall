@@ -102,6 +102,8 @@ pal_loop:
         ld (g_hold_tk+1),a
         ld a,7
         ld (g_draw_mask),a              ; lane N2: sprites + weapon + HUD (the oracles clear bits)
+        xor a
+        ld (g_lvreq),a                  ; lane N3: no level request pending (tools/nx_game_video.py --level K sets it)
         call game_init                  ; lane N2: health/ammo/keys, things from the mapc level, door log (game_b_next.asm)
         im 1
         ei
@@ -149,6 +151,9 @@ ml_sim_done:
         ld (g_moved),a
         call setup_camera_b             ; dirx/diry/plx/ply, mx0/my0, eye = 22 for the new px/py/ang
 ml_draw:
+        ld a,(g_lvreq)                  ; lane N3 tool hook: g_lvreq = 1 -> load level g_level from bank 14 + restart_level
+        or a
+        call nz,level_request
         call game_steps                 ; lane N2: 0..2 game steps of 0.1 s (kea48.asm steps model; game_b_next.asm)
         call game_frame                 ; lane N2: walk_frame_b, then sprites + weapon + HUD into the LoRes frame (sprites_next.asm)
         jp main_loop

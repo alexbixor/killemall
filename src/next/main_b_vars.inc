@@ -48,9 +48,11 @@ KEY_RIGHT   equ 8
 ; lane N2 (5 Nov 2026): the GAME on edition B - things, vis list, door log, game state, sprite/HUD scratch.
 ; RAM 5C00h..5EFFh (free between the drawers' 5900h.., the walker's 5B00h.. and MAIN_STACK 5F00h).
 ; ================================================================================================================
-THINGS_B    equ 5C00h          ; 32 x 8: +0 type (0 none, 1..6 enemies, 16..22 items) +1/+2 x Q8 +3/+4 y Q8 +5 state (0 idle
-                               ;         1 chase 2 attack 3 dead) +6 hp (ETAB col 0; items 30) +7 timer      (5C00h..5CFFh)
-NTHINGS_B   equ 32             ; the 48K has 16; edition B levels place up to 36 (level 08): capped at 32 (N2_QUESTIONS.md)
+THINGS_B    equ 7800h          ; 48 x 8: +0 type (0 none, 1..6 enemies, 16..22 items) +1/+2 x Q8 +3/+4 y Q8 +5 state (0 idle
+                               ;         1 chase 2 attack 3 dead) +6 hp (ETAB col 0; items 30) +7 timer      (7800h..797Fh)
+                               ; lane N3: moved from 5C00h (32 x 8) to the 2 KB above SCR_BOT (6000h + 48*128 = 7800h) that
+                               ; build/next/main_b.sym showed unused (no symbol in 7800h..7FFFh); 5C00h..5CFFh is free now.
+NTHINGS_B   equ 48             ; lane N3: level 08 places 36 things (N2 capped at 32 and dropped 4 silently)
 VIS_B       equ 5D00h          ; 16 x 8: +0 depth Q8 word, +2 c0 word (s16), +4 w cols, +5 h rows, +6 feet row, +7 thing idx
 VISMAX_B    equ 16             ; sorted far -> near (depth descending)                                      (5D00h..5D7Fh)
 DOOR_LOG_B  equ 5D80h          ; 16 x 3: (cell ptr word, original code) of opened doors                     (5D80h..5DAFh)
@@ -59,7 +61,7 @@ g_health    equ 5DB0h          ; byte  0..100
 g_ammo      equ 5DB1h          ; byte  0..99
 g_kkeys     equ 5DB2h          ; byte  b0 red key, b1 blue key
 g_kills     equ 5DB3h          ; byte
-g_level     equ 5DB4h          ; byte  0-based (NLEVELS_B = 1 in this lane)
+g_level     equ 5DB4h          ; byte  0-based (NLEVELS_B = 8 since lane N3)
 g_shield    equ 5DB5h          ; byte  0..100
 g_door_cool equ 5DB6h          ; byte  steps until the next NEED A KEY message
 g_fire_cool equ 5DB7h          ; byte  steps until the pistol may fire again (12 per shot)
@@ -129,12 +131,23 @@ LV_THINGS   equ LEVEL+8+1024   ; n_things (LEVEL+7) records of 3 bytes: type, x 
 ; ---- sprite data: 16K bank 13 = 8K banks 26 (slot 6 while drawing sprites) and 27 (slot 7): tools/nx_sprites_b.py
 SPR_BANK0   equ 26             ; ids 0..13 at C000h + id*512 (16 cols x 32 B, column-major, 0 = transparent)
 SPR_BANK1   equ 27             ; pistol idle E000h, pistol fire E400h (32 cols x 32 B); ids 18..29 at E800h + (id-18)*512
-NLEVELS_B   equ 1              ; this lane packs level 01 only (N2_QUESTIONS.md)
+SPR_BANK2   equ 30             ; lane N3: 16K bank 15 = 8K bank 30: boss ids 30..34 at C000h + (id-30)*512 (nx_sprites_b.py --out2),
+                               ; paged into slot 6 only while draw_sprite_b draws a boss frame (draw_vis restores SPR_BANK0)
+NLEVELS_B   equ 8              ; lane N3: 8 levels in 16K bank 14 (tools/nx_build.py --levels), loaded by load_level_b
+LEVEL_BANK0 equ 28             ; 8K bank of level slots 0..3 (16K bank 14); slots 4..7 are in 8K bank 29; slot k at
+                               ; 8K bank 28 + (k >> 2), offset (k & 3) * 2048; bytes 2045..2047 of a slot = ceil, ftex, ctex
+LV_HDR3     equ LEVEL+2045     ; the 3 header bytes of the loaded slot (ceil, ftex, ctex) after load_level_b
+g_lvreq     equ 5DCAh          ; byte  tool hook (tools/nx_game_video.py --level K): 1 = load level g_level + restart_level
+                               ;       before the next game step; main_loop clears it
+ms_best     equ 5DCCh          ; word  melee_scan: best (smallest) depth so far
+ms_ptr      equ 5DCEh          ; word  melee_scan: THINGS_B pointer of the best candidate (0 = none)
 STEP_B      equ 5              ; ticks per game step (10 Hz), kea48.asm STEP
 g_freeze    equ 5DC4h          ; byte  game steps still frozen after YOU DIED / LEVEL CLEARED (20 = 2 s)
 hud_col     equ 5E1Bh          ; byte  HUD drawing colour
 e_dist      equ 5E1Ch          ; byte  enemy AI: Chebyshev distance in cells
 sd_cnt      equ 5E1Dh          ; byte  draw_sprite_b row counter
+e_sx        equ 5E1Eh          ; word  lane N3: et_chase candidate step x (melee fix a: both steps known before moving)
+e_sy        equ 5E20h          ; word  lane N3: et_chase candidate step y
 ; ---- test hook (src/next/test_game_b.asm, tools/nx_test_game_b.py): 5EF0h..5EFFh
 TGB_CMD     equ 5EF0h          ; byte  0 idle, 1 = setup_camera_b + game_frame, 2 = N game_ticks (TGB_N), 3 = restart_level
 TGB_N       equ 5EF1h          ; byte  ticks to run for command 2

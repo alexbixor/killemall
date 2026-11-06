@@ -107,6 +107,7 @@ def main(argv):
     ap.add_argument("--assets", default="build/next/assets_b")
     ap.add_argument("--level", default="build/night/N1_level01.bin")
     ap.add_argument("--level-index", type=int, default=0)
+    ap.add_argument("--level-start", action="store_true", help="lane N3F: scene `start` = the level header's camera (implied when --level-index > 0)")
     ap.add_argument("--level-txt", default="assets/levels/01_entry.txt")
     ap.add_argument("--out", default="build/night/N1M_full.out")
     ap.add_argument("scenes", nargs="*")
@@ -117,6 +118,11 @@ def main(argv):
     walls = (assets / "walls.bin").read_bytes(); floors = (assets / "floors.bin").read_bytes()
     pal_rgb = palette_rgb((assets / "palette.bin").read_bytes())
     lv_img = nx_build.level_image(ROOT / a.level, a.level_index)
+    if a.level_index != 0 or a.level_start:
+        # lane N3F (6 Nov 2026): for a level other than 01 the scene `start` is THAT level's mapc header camera (start cell centre,
+        # angle * 4), as restart_level sets it; level 01's scene table (lane N1) is unchanged when --level-index is 0.
+        ref.SCENES["start"] = (lv_img[4] * 256 + 128, lv_img[5] * 256 + 128, (lv_img[6] * 4) & 1023)
+        print("level-start scene: (%.2f, %.2f) angle %d from the level header" % (ref.SCENES["start"][0] / 256, ref.SCENES["start"][1] / 256, ref.SCENES["start"][2]))
     opts = nx_build.level_header_options(ROOT / a.level_txt)
     hb = nx_build.header_bytes(opts, assets)
     lines = []

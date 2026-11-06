@@ -9,6 +9,9 @@
 TEST_GAME_B equ 1
         include "main_b.asm"
 
+; lane N3F (6 Nov 2026): the game code ends at 9D8Fh (code_end), too close to PALETTE (9E00h) for the wrapper: it is assembled
+; into the free 0A000h..0A7FFh area of the code image (between PALETTE+512 and PLANES at 0A800h), like test_full_b.asm.
+        org 0A010h
 tgb_main:
         xor a
         ld (TGB_CMD),a
@@ -31,6 +34,12 @@ tgb_wait:
         jr z,tgb_restart
         cp 4
         jr z,tgb_vis
+        cp 5
+        jr z,tgb_level
+        jr tgb_done
+tgb_level:                              ; lane N3: TGB_CMD 5 = load_level_b (slot g_level of bank 14) + restart_level
+        call load_level_b
+        call restart_level
         jr tgb_done
 tgb_frame:
         call setup_camera_b
@@ -68,6 +77,6 @@ tgb_done:
         ld (TGB_DONE),a
         jr tgb_wait
 tgb_end:
-        if tgb_end gt PALETTE
-        .error "test_game_b code overlaps the palette block at 9E00h"
+        if tgb_end gt PLANES
+        .error "test_game_b code overlaps the PLANES block at 0A800h"
         endif

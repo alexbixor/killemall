@@ -8,12 +8,16 @@
 TEST_FULL_B equ 1
         include "main_b.asm"
 
-TFB_SCENE   equ 9D00h           ; px word, py word, ang word (poked by the tool; below PALETTE = 9E00h)
+; lane N3F (6 Nov 2026): lane N3's game code ends at 9D8Fh (build/next/main_b.sym code_end), so the scene block can no longer
+; sit at 9D00h and the wrapper no longer fits below PALETTE (9E00h): both moved to the free 0A000h..0A7FFh area of the code
+; image (palette 9E00h..9FFFh, PLANES from 0A800h). tools/nx_test_full_b.py reads TFB_SCENE from the .sym, nothing else changes.
+TFB_SCENE   equ 0A000h          ; px word, py word, ang word (poked by the tool; in the free area between PALETTE+512 and PLANES)
 TFB_T0      equ 59F8h           ; word  ticks before the timed frames (drawers' scratch area ends at 59F5h: see draw_b.asm)
 TFB_RES     equ 59FCh           ; word  ticks for 20 frames
 TFB_CAL     equ 59F6h           ; word  ticks of the calibration loop (expect ~49 at 28 MHz)
 TFB_DONE    equ 59FFh           ; byte  1 when finished
 
+        org 0A010h
 tfb_main:
         ld hl,(TFB_SCENE+0)
         ld (px),hl
@@ -60,6 +64,6 @@ tfb_cal_inner:
 tfb_park:
         jr tfb_park
 tfb_end:
-        if tfb_end gt TFB_SCENE
-        .error "test_full_b code overlaps the scene block at 9D00h"
+        if tfb_end gt PLANES
+        .error "test_full_b code overlaps the PLANES block at 0A800h"
         endif

@@ -79,4 +79,26 @@ dc_wlo:  defb 255              ; first row of white sprite pixels in this ray co
 dc_whi:  defb 0                ; end row (exclusive) of the last white run in this ray column
 msg_clear: defb "LEVEL CLEARED",0   ; M2.8 (3 Nov 2026): hud_message strings of game_d.asm, moved here (23 B) to pay for strafe
 msg_dead:  defb "YOU DIED",0
+        IF DEFINED HIRES
+; lane S (6 Nov 2026, 128K HIRES spike, pasmo --equ HIRES=1 only): hr_pass replaces `call draw_sprite` in vis_sort_draw
+; (sprites_e.asm). HL -> vis entry. Pages RAM bank 3 (src/128k/bank3.asm: hi-res zombie blitter + IM2 mirror) in at C000h with
+; interrupts on (rules F1/F2: BANKM names bank 3, latch kept, stack in the fixed area), calls hr_entry (F000h): E = 1 the entry
+; was a zombie (drawn in 2-px columns) / 0 not a zombie -> old draw_sprite with bank 0 back. 29 B in the low block tail
+; (low_end 7FDFh -> 7FFCh). Rule F3 hazard: a pending fl_req while bank 3 is paged would make snd_isr restore bank 0 under this
+; code, so hr_pass first drains it with fl_wait (bank 0 is paged on entry; on the 128K the ray pass always cleared it already).
+hr_pass:
+        push hl
+        call fl_wait           ; flip_hi.asm (bank 0): no display switch pending -> snd_isr will return to BANKM's bank (3)
+        ld a,(BANKM)
+        or 03h
+        ld (BANKM),a
+        ld bc,07FFDh
+        out (c),a
+        call 0F000h            ; hr_entry (bank 3)
+        call fl_pg0            ; bank 0 back, latch kept (shim128.asm)
+        pop hl
+        dec e
+        ret z
+        jp draw_sprite
+        ENDIF
 low_end equ $                  ; must stay <= 0x8000 (build gate)

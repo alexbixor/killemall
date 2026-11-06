@@ -42,7 +42,7 @@ m.set_output_callback(on_out); m.set_input_callback(lambda p: 0xFF)
 TRAP, SCR = 0x5EC0, 0x5ED0          # M2.5C: DRAM spare (page 0x6A is FTX)
 def call(label, a=None, limit=400000):
     stub = (bytes([0x3E, a]) if a is not None else b"") + bytes([0xCD, S[label] & 255, S[label] >> 8, 0xC3, TRAP & 255, TRAP >> 8])
-    m.set_memory_block(SCR, stub); m.set_memory_block(TRAP, bytes([0xC3, TRAP & 255, TRAP >> 8])); m.pc = SCR; m.sp = 65008
+    m.set_memory_block(SCR, stub); m.set_memory_block(TRAP, bytes([0xC3, TRAP & 255, TRAP >> 8])); m.pc = SCR; m.sp = S.get("FSTACK", 65008)   # lane F: fixed-area stack under FLIP (rule F2)
     m.set_breakpoint(TRAP); used = 0
     while used < limit and m.pc != TRAP:            # run() may return early on events: loop until the trap
         m.ticks_to_stop = 20000; m.run(); used += 20000 - m.ticks_to_stop
@@ -53,7 +53,7 @@ m.set_memory_block(23388, b"\x07"); del outs[:]; call("bank_init")
 check(outs == [(0x7FFD, 0x10)] and m.memory[23388] == 0x10, "bank_init: OUT 7FFD 10h, BANKM 10h")
 for lab, a in (("snd_music", 1), ("snd_fx", 3)):
     del outs[:]; t = call(lab, a); pg = [v for p, v in outs if p == 0x7FFD]
-    check(pg == [0x11, 0x10] and cur[0] == 0 and m.memory[23388] == 0x10 and m.sp == 65008,
+    check(pg == [0x11, 0x10] and cur[0] == 0 and m.memory[23388] == 0x10 and m.sp == S.get("FSTACK", 65008),
           "%s %d: 7FFD writes %s (bits 3..7 kept, bank 0 restored, BANKM 10h, SP balanced), %d T" % (lab, a, [hex(v) for v in pg], t))
 check(b1mem(S1["mus_req"], 1) == b"\x81" and b1mem(S1["sfx_req"], 2) != b"\0\0", "requests landed in bank 1: mus_req 81h, sfx_req set")
 check(b1mem(49152 + 15, 2) == bytes([m.memory[S["opt_music"]], m.memory[S["opt_sfx"]]]), "opt_music/opt_sfx copied into the bank-1 table")

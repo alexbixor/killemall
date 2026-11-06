@@ -11,7 +11,11 @@
 
 ISRVEC  equ 65021          ; IM2 vector target (table of 253 at 65024..65280)
 TABLE   equ 65024
+        IF DEFINED FLIP
+ATTRWIN equ 24832+0x24     ; lane F: staging window in BUF (same low bytes 24h..3Bh per row, stride 32; shim128.asm fl_ca)
+        ELSE
 ATTRWIN equ 22564          ; attribute address of window row 0 (attr row 1), column 4 (M2.5C: 24 cells per row)
+        ENDIF
 CHJ     equ 24576          ; M2.5C: 0x6000..0x60C1 RAM: CHJ[n] = SCHAIN_END - 5n (n 0..96), built by init_game (sprites_f.asm
                            ; reads it with ld l,a / inc l: page-contained). 0x60C2..0x60FF: ISR pushes at the last push of
                            ; CLRBUF (SP = BUF) land here, not in SOLIDPG (latent M2.2..M2.5B bug: 4 B / 128K ~36 B per hit).
@@ -25,10 +29,22 @@ ROMFONT equ 15616
 SOLIDPG equ 0x5F               ; M2.2: RAM page 0x5F00..0x5FFF (dead BASIC area above DRAM_END, see state.asm) filled with
                                ; 0xFF by init_game = solid texture page. RAM, not ROM: the +2/+3 ROM 1 has no all-FF page.
 FAR_H   equ 16                 ; walls this high or lower are drawn solid (distance >= 6 cells)
-
+        IF DEFINED FLIP
+; lane F (6 Nov 2026, 128K only, pasmo --equ FLIP=1): shadow-screen flip (shim128.asm rules F1..F7). The stack moves
+; into the fixed 16 KB (never paged): FSTACK 5D00h grows down over 5C00h..5CFFh (48K system variables: dead here, the
+; ROM is never entered; measured depth 16 B + ISR, build/m25_stack.out) so SP never points into a paged bank (rule F2).
+; The IM2 table + ISRVEC stay at TABLE/ISRVEC in bank 0 AND are mirrored into bank 7 (fl_init), so an interrupt during
+; a bank-7 phase reaches isr. ATTRWIN (attr_write's / wt_fill's 12 x 24 window, stride 32) becomes a STAGING window in
+; BUF (dead after COPYBUF): fl_ca copies the 288 cells into the hidden screen with bank 7 paged (rule F4).
+FSTACK  equ 5D00h
+        ENDIF
 start:  call bank_init         ; T4 128K anchor A1
         di
+        IF DEFINED FLIP
+        ld sp,FSTACK
+        ELSE
         ld sp,65008
+        ENDIF
         ld hl,TABLE
         ld de,TABLE+1
         ld bc,256
@@ -38,13 +54,25 @@ start:  call bank_init         ; T4 128K anchor A1
         ld (ISRVEC),a
         ld hl,isr
         ld (ISRVEC+1),hl
+        IF DEFINED FLIP
+        call fl_init           ; same table + vector into bank 7 (rule F2); bank 0 paged again on return
+        ENDIF
         ld a,254
         ld i,a
         im 2
         ei
+        IF DEFINED FLIP
+        ELSE
         ld a,2
         ld (mt_outer),a        ; T3 knob: real 2-voice menu tune (the menu frame has the CPU)
-menu:   ld sp,65008            ; reached by jp from deep inside the game (level_clear): fresh stack
+        ENDIF
+menu:
+        IF DEFINED FLIP
+        ld sp,FSTACK           ; reached by jp from deep inside the game (level_clear): fresh stack (fixed area, rule F2)
+        call fl_show0          ; rule F7: screen 0 displayed before the front end draws into it
+        ELSE
+        ld sp,65008            ; reached by jp from deep inside the game (level_clear): fresh stack
+        ENDIF
         ld a,1
         call snd_music         ; menu tune on (honours opt_music)
         call fe_run            ; T2 menu over the title screen; returns when START is chosen
@@ -69,6 +97,9 @@ main:   ld hl,(frames)
         ld a,(in_break)
         or a
         jp z,main
+        IF DEFINED FLIP
+        call fl_show0          ; rule F7: the pause menu draws into screen 0 - show it first
+        ENDIF
         call fe_pause          ; BREAK: pause menu over rows 16..23; A = 0 resume, 1 quit to menu
         or a
         jr z,resume
@@ -156,6 +187,8 @@ menu_bg:                       ; back from the game: the frozen 3D view stays, r
         jp print
 name_txt: defb "KILL'EM ALL",0
 NLEVELS equ 3
+        IF DEFINED FLIP
+        ELSE                   ; lane F: dropped under FLIP (dead on the 128K: shim128.asm load_level; pays for fl_* code)
 LDBYTES equ 0x0556             ; ROM loader: IX = dest, DE = length, A = flag, carry = load
 ; load_level: A = wanted level id (1..3) -> loads 1081-byte blocks (flag 0xFF) from tape into level_data until one whose
 ; byte 0 is the wanted id arrives (level_data is the only RAM touched). ROM loader runs with DI; returns with EI.
@@ -185,6 +218,7 @@ ll_try: ld ix,level_data
         ret
 ll_want: defb 0
 msg_tape: defb "LOADING NEXT LEVEL",0
+        ENDIF
 
 isr:    call snd_isr           ; T4 128K anchor A2 (AY player tick in bank 1)
         push hl
@@ -488,8 +522,12 @@ col_loop:
         cp 64
         jr c,col_loop
         call draw_things       ; T1: scaled masked sprites with zbuf depth test (M2.5: masked blit, no attributes)
+        IF DEFINED FLIP
+        jp fl_frame            ; lane F: COPYBUF + attr_write into the hidden screen, then request the flip (shim128.asm)
+        ELSE
         call COPYBUF           ; one burst copy of the back buffer to the screen window
         jp attr_write          ; M2.6 P2E: window attributes from zbuf + sprite marks (attr.asm, ends with ret)
+        ENDIF
 
 ray:
         ld hl,(accx+1)
@@ -984,6 +1022,9 @@ fty_cache:  defb 1
         include "../common/hud.asm"
         include "../common/hud_b.asm"
         include "../common/attr.asm"           ; M2.6 P2E: per-frame window attribute writer
+        IF DEFINED FLIP
+        include "../128k/flip_hi.asm"          ; lane F (128K): fl_frame / fl_hud / fl_wait / fl_show0 (bank 0 only)
+        ENDIF
 ; T1: gen/sprites48.asm begins with "org 27904" -> sprites, SCHAIN, NCTAB/STEPTAB/VSTEP, SPG page and level_data load low (27904..32767)
 hi_end  equ $
         include "gen/sprites48.asm"

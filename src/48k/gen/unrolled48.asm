@@ -73,6 +73,10 @@ COPYBUF:
         ld hl,BUF
         ld bc,96
         exx
+        IF DEFINED FLIP
+        ld a,(cb_hi)
+        ld b,a
+        ENDIF
         ld c,0
 cb_col: exx
         ld sp,hl
@@ -82,7 +86,11 @@ cb_col: exx
         ld a,c
         add a,36
         ld l,a
+        IF DEFINED FLIP
+        ld h,b
+        ELSE
         ld h,64
+        ENDIF
         ld (hl),e
         inc h
         ld (hl),d
@@ -105,7 +113,11 @@ cb_col: exx
         ld a,c
         add a,68
         ld l,a
+        IF DEFINED FLIP
+        ld h,b
+        ELSE
         ld h,64
+        ENDIF
         ld (hl),e
         inc h
         ld (hl),d
@@ -128,7 +140,11 @@ cb_col: exx
         ld a,c
         add a,100
         ld l,a
+        IF DEFINED FLIP
+        ld h,b
+        ELSE
         ld h,64
+        ENDIF
         ld (hl),e
         inc h
         ld (hl),d
@@ -151,7 +167,11 @@ cb_col: exx
         ld a,c
         add a,132
         ld l,a
+        IF DEFINED FLIP
+        ld h,b
+        ELSE
         ld h,64
+        ENDIF
         ld (hl),e
         inc h
         ld (hl),d
@@ -174,7 +194,11 @@ cb_col: exx
         ld a,c
         add a,164
         ld l,a
+        IF DEFINED FLIP
+        ld h,b
+        ELSE
         ld h,64
+        ENDIF
         ld (hl),e
         inc h
         ld (hl),d
@@ -197,7 +221,11 @@ cb_col: exx
         ld a,c
         add a,196
         ld l,a
+        IF DEFINED FLIP
+        ld h,b
+        ELSE
         ld h,64
+        ENDIF
         ld (hl),e
         inc h
         ld (hl),d
@@ -220,7 +248,11 @@ cb_col: exx
         ld a,c
         add a,228
         ld l,a
+        IF DEFINED FLIP
+        ld h,b
+        ELSE
         ld h,64
+        ENDIF
         ld (hl),e
         inc h
         ld (hl),d
@@ -243,7 +275,13 @@ cb_col: exx
         ld a,c
         add a,4
         ld l,a
+        IF DEFINED FLIP
+        ld a,b
+        add a,8
+        ld h,a
+        ELSE
         ld h,72
+        ENDIF
         ld (hl),e
         inc h
         ld (hl),d
@@ -266,7 +304,13 @@ cb_col: exx
         ld a,c
         add a,36
         ld l,a
+        IF DEFINED FLIP
+        ld a,b
+        add a,8
+        ld h,a
+        ELSE
         ld h,72
+        ENDIF
         ld (hl),e
         inc h
         ld (hl),d
@@ -289,7 +333,13 @@ cb_col: exx
         ld a,c
         add a,68
         ld l,a
+        IF DEFINED FLIP
+        ld a,b
+        add a,8
+        ld h,a
+        ELSE
         ld h,72
+        ENDIF
         ld (hl),e
         inc h
         ld (hl),d
@@ -312,7 +362,13 @@ cb_col: exx
         ld a,c
         add a,100
         ld l,a
+        IF DEFINED FLIP
+        ld a,b
+        add a,8
+        ld h,a
+        ELSE
         ld h,72
+        ENDIF
         ld (hl),e
         inc h
         ld (hl),d
@@ -335,7 +391,13 @@ cb_col: exx
         ld a,c
         add a,132
         ld l,a
+        IF DEFINED FLIP
+        ld a,b
+        add a,8
+        ld h,a
+        ELSE
         ld h,72
+        ENDIF
         ld (hl),e
         inc h
         ld (hl),d

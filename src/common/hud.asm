@@ -16,6 +16,9 @@ HBAR    equ 0x500B             ; health bar: col 11, y 128
 SBAR    equ 0x508B             ; shield bar: col 11, y 160
 hud_init:
         ld a,255
+        IF DEFINED FLIP
+        ld (hud_dirty),a       ; lane F rule F6: the HUD rows are redrawn -> mirror them into bank 7 at the next frame
+        ENDIF
         ld (hud_health),a
         ld (hud_ammo),a
         ld (hud_keys),a
@@ -365,6 +368,10 @@ keys_draw:
         ld hl,0x5019           ; (200,128): col 25
 pill_draw:                     ; DE = 8 rows x 2 bytes, HL = screen address
         ld b,8
+        IF DEFINED FLIP
+        ld a,b
+        ld (hud_dirty),a       ; lane F rule F6
+        ENDIF
 pd_l:   ld a,(de)
         ld (hl),a
         inc de

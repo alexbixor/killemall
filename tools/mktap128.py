@@ -42,7 +42,7 @@ def header(typ, name, length, p1, p2):
 def tok(*names):
     return bytes(T[n] for n in names)
 
-def basic_loader():
+def basic_loader(n_extra=0):
     L = []
     L.append(line(10, tok("CLEAR") + num(CLEAR)))
     L.append(line(20, tok("POKE") + num(23610) + b"," + num(255)))
@@ -59,6 +59,9 @@ def basic_loader():
         L.append(line(ln, tok("POKE") + num(STUB_BANK_BYTE) + b"," + num(0x10 + bank) + b":" + tok("RANDOMIZE", "USR") + num(STUB_AT))); ln += 10
     load_code()            # stub -> 24576
     L.append(line(ln, tok("RANDOMIZE", "USR") + num(STUB_AT))); ln += 10      # stub loads bank1.bin into bank 1 itself
+    for _ in range(n_extra):                                                   # lane S: stub for bank 3 (its own bank byte / dest)
+        load_code()
+        L.append(line(ln, tok("RANDOMIZE", "USR") + num(STUB_AT))); ln += 10
     load_code()            # engine image -> 27904.. (bank 0 above 49152)
     L.append(line(ln, tok("RANDOMIZE", "USR") + num(32768)))
     return b"".join(L)
@@ -79,19 +82,31 @@ def main():
     start, code = code_block(pathlib.Path(sys.argv[1]).read_bytes())
     CLEAR = start - 1                                   # M2.5C: RAMTOP just below the first loaded byte
     bank1 = pathlib.Path(sys.argv[2]).read_bytes(); scr = pathlib.Path(sys.argv[3]).read_bytes(); out = pathlib.Path(sys.argv[4])
+    # lane S (6 Nov 2026, HIRES spike): optional 5th argument "bank3.bin@61440" = a second bank image loaded by the same stub
+    # (POKEd bank byte 13h, load address F000h) right after bank 1. Absent (the default build) -> the tape is byte-identical.
+    extra = []
+    for arg in sys.argv[5:]:
+        pth, at = arg.split("@"); extra.append((int(at), pathlib.Path(pth).read_bytes()))
     # lane G (5 Nov 2026): the image ends at 0FFF0h now (ETAB + enemy step code at 0FF01h, above the IM2 table): the bytes it
     # loads over the stack / TABLE area (hi_end..0FF00h = zeros) are rewritten by start; the loader's own stack is below RAMTOP.
     assert len(scr) == 6912 and start > CLEAR and start + len(code) <= 65536 and len(bank1) <= 16384
-    prog = basic_loader()
+    prog = basic_loader(len(extra))
     tape = header(0, "killemall", len(prog), 10, len(prog)) + tap_block(0xFF, prog)
     tape += header(3, "title", 6912, 16384, 32768) + tap_block(0xFF, scr)
     stub = bytearray(STUB); stub[STUB_LEN_AT:STUB_LEN_AT + 2] = struct.pack("<H", len(bank1))
     tape += header(3, "page", len(stub), STUB_AT, 32768) + tap_block(0xFF, bytes(stub))
     tape += tap_block(0xFF, bank1)                                   # headerless, loaded by the stub (LD-BYTES)
+    for at, img in extra:
+        assert at + len(img) <= 65536
+        stub3 = bytearray(STUB); stub3[1] = 0x13; stub3[STUB_LEN_AT:STUB_LEN_AT + 2] = struct.pack("<H", len(img))
+        stub3[10:12] = struct.pack("<H", at)                         # ld ix,at
+        tape += header(3, "page3", len(stub3), STUB_AT, 32768) + tap_block(0xFF, bytes(stub3))
+        tape += tap_block(0xFF, img)
     tape += header(3, "killemall", len(code), start, 32768) + tap_block(0xFF, code)
     out.write_bytes(tape)
-    print("wrote %s: %d bytes (BASIC %d, stub %d @%d, bank1 %d @49152, code %d @%d..%d)" % (
-        out, len(tape), len(prog), len(STUB), STUB_AT, len(bank1), len(code), start, start + len(code) - 1))
+    print("wrote %s: %d bytes (BASIC %d, stub %d @%d, bank1 %d @49152, code %d @%d..%d%s)" % (
+        out, len(tape), len(prog), len(STUB), STUB_AT, len(bank1), len(code), start, start + len(code) - 1,
+        "".join(", bank3 %d @%d" % (len(img), at) for at, img in extra)))
 
 if __name__ == "__main__":
     main()

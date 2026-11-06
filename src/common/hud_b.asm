@@ -3,6 +3,9 @@
 print_char:
         push hl
         push bc
+        IF DEFINED FLIP
+        ld (hud_dirty),a       ; lane F rule F6: A = character >= 32, never 0
+        ENDIF
         sub 32
         ld l,a
         ld h,0

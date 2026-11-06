@@ -2,6 +2,9 @@
 level_clear:
         ld a,9
         call snd_fx
+        IF DEFINED FLIP
+        call fl_show0          ; lane F rule F7: the message + wait happen on screen 0
+        ENDIF
         ld hl,msg_clear
         call hud_message
         call hud_update
@@ -20,6 +23,9 @@ lc_next:
 player_dead:
         ld a,10
         call snd_fx
+        IF DEFINED FLIP
+        call fl_show0          ; lane F rule F7
+        ENDIF
         ld hl,msg_dead
         call hud_message
         call hud_update

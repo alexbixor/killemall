@@ -198,14 +198,21 @@ def unrolled():
     # M2.5: ATTR_d / ATTRCOPY removed (one ink for the whole window, set once by cls)
     # ---- COPYBUF: buffer -> screen, one column at a time (48 pops), interrupts stay enabled (ISR pushes land on bytes
     #      already popped, or below BUF at the very start).  C = byte column 0..15, alt HL = buffer column pointer.
-    s += ["COPYBUF:", "        ld (cb_sp+1),sp", "        exx", "        ld hl,BUF", "        ld bc,96", "        exx", "        ld c,0",
+    #      Lane F (5 Nov 2026, 128K shadow flip, pasmo --equ FLIP=1): the destination high byte comes from cb_hi (shim128.asm:
+    #      40h = screen 0, C0h = bank 7 shadow screen paged at C000h) held in B for the whole copy; the 48K form is unchanged
+    #      (both forms are emitted, IF DEFINED FLIP selects one at assembly time, so the 48K image stays byte-identical).
+    s += ["COPYBUF:", "        ld (cb_sp+1),sp", "        exx", "        ld hl,BUF", "        ld bc,96", "        exx",
+          "        IF DEFINED FLIP", "        ld a,(cb_hi)", "        ld b,a", "        ENDIF", "        ld c,0",
           "cb_col: exx", "        ld sp,hl", "        add hl,bc", "        exx"]      # M2.5C: HL' = next column (stride 96)
     for r in range(0, 96, 2):
         s.append("        pop de")
         if r % 8 == 0:
             y = 8 + r
+            third = (y & 0xC0) >> 3
             s += ["        ld a,c", "        add a,%d" % (((y & 0x38) << 2) + 4), "        ld l,a",      # M2.5C: screen col 4 + c
-                  "        ld h,%d" % (0x40 + ((y & 0xC0) >> 3))]
+                  "        IF DEFINED FLIP"]
+            s += ["        ld h,b"] if third == 0 else ["        ld a,b", "        add a,%d" % third, "        ld h,a"]
+            s += ["        ELSE", "        ld h,%d" % (0x40 + third), "        ENDIF"]
         else:
             s.append("        inc h")
         s += ["        ld (hl),e", "        inc h", "        ld (hl),d"]

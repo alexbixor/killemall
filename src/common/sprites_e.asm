@@ -8,7 +8,11 @@ vis_sort_draw:
         ld hl,vis
 vsd_l:  push bc
         push hl
+        IF DEFINED HIRES
+        call hr_pass           ; lane S (128K spike): zombies -> bank-3 hi-res blitter, everything else -> draw_sprite (lowcode.asm)
+        ELSE
         call draw_sprite
+        ENDIF
         pop hl
         ld bc,6
         add hl,bc

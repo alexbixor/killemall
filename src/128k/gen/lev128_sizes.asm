@@ -2,4 +2,4 @@
 LEV_STRIDE equ 1141   ; level_data slot size: id + header + 1024 cells + 36 things (LEVELS8)
 NLEV equ 8
 LOWCODE equ 23488      ; run-time address of the low code block (state.asm)
-LOWCODE_LEN equ 102  ; bytes b1_load copies there (build/lowcode128.bin)
+LOWCODE_LEN equ 131  ; bytes b1_load copies there (build/lowcode128.bin)

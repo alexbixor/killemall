@@ -27,9 +27,13 @@ check("cb_hi" in S and "fl_req" in S and "fl_frame" in S and "hud_dirty" in S, "
 bl = tapdump.blocks((ROOT / "build/kea128.tap").read_bytes())
 start, code = next((struct.unpack_from("<H", b, 14)[0], bytes(bl[i + 1][1:1 + struct.unpack_from("<H", b, 12)[0]])) for i, b in enumerate(bl) if b[0] == 0 and b[1] == 3)
 b1 = (ROOT / "build/bank1.bin").read_bytes()
+# lane M2 (7 Nov 2026): the default build pages RAM bank 3 (hr_pass in the low code block, 131 B) for every sprite of the vis list:
+# the bank-3 image (build/bank3.bin at bank3_org from build/bank3.sym: blitter + types 3..6 art + IM2 mirror) is part of the machine model
+S3 = {m.group(1): int(m.group(2), 16) for m in re.finditer(r"^(\w+)\s+EQU\s+0?([0-9A-F]+)H", (ROOT / "build/bank3.sym").read_text(), re.M)}
+b3 = (ROOT / "build/bank3.bin").read_bytes(); b3org = S3["bank3_org"] - 0xC000
 m = z80.Z80Machine(); m.set_memory_block(start, code)
 BANKM = 23388
-banks = {0: bytes(m.memory[0xC000:0x10000]), 1: b1 + bytes(16384 - len(b1)), 7: bytes(16384)}
+banks = {0: bytes(m.memory[0xC000:0x10000]), 1: b1 + bytes(16384 - len(b1)), 3: bytes(b3org) + b3 + bytes(16384 - b3org - len(b3)), 7: bytes(16384)}
 cur = [0]; shown = [0]; outs = []
 def on_out(port, val):
     outs.append((port, val))
@@ -202,6 +206,10 @@ staged = bytes(m.memory[S["BUF"]:S["BUF"] + 2304])   # BUF is reused as staging 
 # again with fl_frame stubbed to get the pristine BUF for the same camera state.
 save = bytes(m.memory[S["fl_frame"]:S["fl_frame"] + 1]); m.set_memory_block(S["fl_frame"], b"\xc9")
 hid_win = window2(hid); hid_attr = attrs2(hid)
+# lane M2: the frame above left fl_req set; the default build's hr_pass (BANK3) begins every sprite with fl_wait, which spins until
+# the ISR clears fl_req - and call() injects no interrupts. Read the request now, clear it for the pristine render (fl_frame is
+# stubbed, so nothing sets it again), then put it back so section 6 below starts from the same state as before.
+req = m.memory[S["fl_req"]]; m.set_memory_block(S["fl_req"], b"\x00")
 call("render", limit=6_000_000); m.set_memory_block(S["fl_frame"], save)
 pristine = bytes(m.memory[S["BUF"]:S["BUF"] + 2304])
 # staged attributes for that same frame: run attr_write alone (writes BUF+24h..)
@@ -210,7 +218,7 @@ stage = bytearray()
 for row in range(12):
     a0 = S["BUF"] + 0x24 + row * 32
     stage += bytes(m.memory[a0:a0 + 24])
-req = m.memory[S["fl_req"]]
+m.set_memory_block(S["fl_req"], bytes([req]))
 check(hid_win == pristine, "B hidden screen (%s) pixel window == rendered BUF (2304 B): %s" % ("bank 7" if hid == 0xC000 else "screen 0", hid_win == pristine))
 check(hid_attr == bytes(stage), "B hidden screen attribute window == attr_write's 288 staged cells: %s" % (hid_attr == bytes(stage)))
 check(req in (0x10, 0x18) and ((req >> 3) & 1) == (1 if hid == 0xC000 else 0), "B fl_req after the frame = %02Xh -> shows the screen just drawn" % req)

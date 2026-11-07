@@ -9,6 +9,11 @@ changed 2-px column has zbuf < hv on its ray (depth), (c) nothing outside BUF / 
 bank 3 code), (d) bank 0 paged + BANKM bank bits 0 after the pass, (e) 30 frames with INTs every 69,888 T: ticks == 30.
 Also prints T-states: render with no things, with 1 zombie at 1.0/1.5/2.5 cells, 3 zombies at 1.5 (old draw_sprite via the
 default build build/kea128.tap for the same scenes). Output also to build/night/S_test_hires.out; exit 0 = all checks pass."""
+# lane M2 (7 Nov 2026): (1) the bank-3 image is loaded at bank3_org (build/bank3.sym; DE00h since the types 3..6 art moved in below
+# the code) instead of a hard-coded F000h; (2) load_level 1 runs before the scenes: since lane K1 the low code block (hr_pass)
+# reaches LOWCODE 5BC0h only through load_level (b1_load); (3) "default build has no hr_pass" became "default build has hr_pass
+# but no HIRES" - the default tape now carries hr_pass + bank 3 for types 3..6 (tools/test_m2.py is its oracle); here the default
+# build still serves as the old-path reference for zombies, which is exactly what it draws without HIRES.
 import sys, re, struct, pathlib
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools")); import z80, tapdump
@@ -26,13 +31,14 @@ BANKM = 23388; TRAP, SCR = 0x5EC0, 0x5ED0
 PXRAY = [0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 6, 6, 6, 7, 7, 7]
 
 class Mach:
-    def __init__(self, tap, sym, bank3=None):
+    def __init__(self, tap, sym, bank3=None, bank3_sym="build/bank3.sym"):
         self.S = syms(sym); start, code = code_of(tap)
         self.m = m = z80.Z80Machine(); m.set_memory_block(start, code)
         b1 = (ROOT / "build/bank1.bin").read_bytes()
         self.banks = {0: bytes(m.memory[0xC000:0x10000]), 1: b1 + bytes(16384 - len(b1)), 7: bytes(16384)}
         if bank3 is not None:
-            b3 = (ROOT / bank3).read_bytes(); self.banks[3] = bytes(0x3000) + b3 + bytes(16384 - 0x3000 - len(b3))
+            org = syms(bank3_sym)["bank3_org"] - 0xC000      # lane M2: the image starts at bank3_org (DE00h), not F000h
+            b3 = (ROOT / bank3).read_bytes(); self.banks[3] = bytes(org) + b3 + bytes(16384 - org - len(b3))
         self.cur = 0; self.outs = []
         m.set_output_callback(self.on_out); m.set_input_callback(lambda p: 0xFF)
     def on_out(self, port, val):
@@ -53,7 +59,7 @@ class Mach:
     def set_player(self, px, py, ang):
         S = self.S
         self.m.set_memory_block(S["posx"], struct.pack("<HH", int(px * 256), int(py * 256))); self.m.set_memory_block(S["angle"], bytes([ang & 255]))
-    def clear_things(self): self.m.set_memory_block(self.S["things"], bytes(16 * 8))
+    def clear_things(self): self.m.set_memory_block(self.S["things"], bytes(self.S["NTHINGS"] * 8))
     def set_thing(self, i, typ, x, y, state=0):
         self.m.set_memory_block(self.S["things"] + 8 * i, bytes([typ]) + struct.pack("<HH", int(x * 256), int(y * 256)) + bytes([state, 30, 0]))
     def buf(self): return bytes(self.m.memory[self.S["BUF"]:self.S["BUF"] + 2304])
@@ -101,12 +107,20 @@ def apply_model(ref, pix):
         b[bc * 96 + r] = (b[bc * 96 + r] & andm) | orm
     return bytes(b)
 
-H = Mach("build/kea128_hires.tap", "build/kea128_hires.sym", "build/bank3.bin")
-D = Mach("build/kea128.tap", "build/kea128.sym")
+H = Mach("build/kea128_hires.tap", "build/kea128_hires.sym", "build/bank3_hires.bin", "build/bank3_hires.sym")   # lane M2: the HIRES build's own bank-3 image
+D = Mach("build/kea128.tap", "build/kea128.sym", "build/bank3.bin", "build/bank3.sym")   # lane M2: the default build pages bank 3 too (types 3..6); zombies take its old draw_sprite path
 for M in (H, D):
-    M.call("bank_init"); M.call("init_game", limit=8_000_000); M.m.set_memory_block(M.S["draw_weapon"], b"\xc9")   # pistol off: sprite cost alone
+    M.call("bank_init"); M.call("load_level", a=1); M.call("init_game", limit=8_000_000); M.m.set_memory_block(M.S["draw_weapon"], b"\xc9")   # pistol off: sprite cost alone
     M.m.set_memory_block(M.S["fl_frame"], b"\xc9")                                                              # no copy phase: BUF is the result
-check("hr_pass" in H.S and "hr_pass" not in D.S, "HIRES build has hr_pass (lowcode.asm), default build has not")
+lowimg = (ROOT / "build/lowcode128.bin").read_bytes()
+S3 = syms("build/bank3_hires.sym")
+check("hr_pass" in H.S and bytes(H.m.memory[H.S["LOWCODE"]:H.S["LOWCODE"] + len(lowimg)]) == lowimg and "BANK3" in H.S and S3["hr_entry"] == 0xF000,
+      "HIRES build has hr_pass (lowcode.asm) in place at %04Xh after load_level, BANK3 implied by HIRES (BANK3 in the .sym), hr_entry F000h" % H.S.get("hr_pass", 0))
+def b3_static(b):
+    """bank 3 with its RAM areas (hr_hv..hr_code_end variables, ROWTAB2 49 B) zeroed: everything else must never change (lane M2: the old
+    `[:0x500]` compare looked at C000h..C4FFh, which the image never covered)."""
+    a = bytearray(b); v0, v1 = S3["hr_hv"] - 0xC000, S3["hr_code_end"] - 0xC000; r0 = S3["ROWTAB2"] - 0xC000
+    a[v0:v1] = bytes(v1 - v0); a[r0:r0 + 49] = bytes(49); return bytes(a)
 hb3 = H.bank(3); check(hb3[0x3DFD:0x3E00] == bytes([0xC3, H.S["isr"] & 255, H.S["isr"] >> 8]) and hb3[0x3E00:0x3F01] == bytes([0xFD] * 257), "bank 3 carries the IM2 mirror (jp isr at FDFDh, 257 x FDh at FE00h)")
 # frame id in bank 3 = index of the vis entry's 16x24 pointer in spr_table[4..7]
 sprt = [struct.unpack_from("<H", bytes(H.m.memory[H.S["spr_table"]:H.S["spr_table"] + 36]), 2 * i)[0] for i in range(18)]
@@ -139,8 +153,8 @@ for name, things in (("none", []), ("z1.0", [(2, 4.5, 7.5)]), ("z1.5", [(2, 5.0,
         ok_depth = got == ref
     check(not diff and ok_depth, "%-8s HIRES BUF == model (%d mismatching bytes), vis entries %d, byte columns changed %s; T render HIRES %d / default %d" % (
         name, len(diff), n, (cols_changed[:1] + ["..", cols_changed[-1]]) if len(cols_changed) > 2 else cols_changed, tH, tD))
-    check(H.bank(0) == b0 and bytes(H.m.memory[0x4D00:0x5B00]) == scr_hud and H.bank(3)[:0x500] == b3[:0x500] and H.cur == 0 and (H.m.memory[BANKM] & 7) == 0,
-          "%-8s bank 0 / HUD rows / bank-3 code untouched, bank 0 paged after the pass (BANKM %02Xh)" % (name, H.m.memory[BANKM]))
+    check(H.bank(0) == b0 and bytes(H.m.memory[0x4D00:0x5B00]) == scr_hud and b3_static(H.bank(3)) == b3_static(b3) and H.cur == 0 and (H.m.memory[BANKM] & 7) == 0,
+          "%-8s bank 0 / HUD rows / bank 3 (art, code, tables, IM2 mirror) untouched, bank 0 paged after the pass (BANKM %02Xh)" % (name, H.m.memory[BANKM]))
     if name in ("z1.0", "z1.5", "z2.5"):
         # column coverage: 2-px columns changed in HIRES vs 3-px ray columns changed in the default build
         def cols2(a, b):

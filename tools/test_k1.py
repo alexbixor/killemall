@@ -30,6 +30,9 @@ if "--nobuild" not in sys.argv:
     if r.returncode: say(r.stdout + r.stderr); sys.exit(1)
 S = sym(ROOT / "build/kea128.sym"); S1 = sym(ROOT / "build/bank1.sym")
 b1 = (ROOT / "build/bank1.bin").read_bytes(); lowimg = (ROOT / "build/lowcode128.bin").read_bytes()
+# lane M2 (7 Nov 2026): the default build pages RAM bank 3 (hr_pass in the low code block) for every sprite of the vis list: the
+# bank-3 image (build/bank3.bin at bank3_org from build/bank3.sym; blitter + types 3..6 art + IM2 mirror) is part of the machine model
+S3 = sym(ROOT / "build/bank3.sym"); b3 = (ROOT / "build/bank3.bin").read_bytes(); b3org = S3["bank3_org"] - 0xC000
 imgs = [(ROOT / ("build/lev128_%d.bin" % i)).read_bytes() for i in range(8)]
 NT, VISMAX, BLK = S["NTHINGS"], S["VISMAX"], S["LEVEL_BLK"]
 # ---- S static layout
@@ -62,7 +65,7 @@ check(sha48 == "efc8dd21c080fb55", "S 48K identity: build/kea48.tap sha256 %s (e
 # ---- machine
 m = z80.Z80Machine(); m.set_memory_block(start, code)
 BANKM = 23388
-banks = {0: bytes(m.memory[0xC000:0x10000]), 1: b1 + bytes(16384 - len(b1)), 7: bytes(16384)}
+banks = {0: bytes(m.memory[0xC000:0x10000]), 1: b1 + bytes(16384 - len(b1)), 3: bytes(b3org) + b3 + bytes(16384 - b3org - len(b3)), 7: bytes(16384)}
 cur = [0]; outs = []
 def on_out(port, val):
     outs.append((port, val))
@@ -81,7 +84,7 @@ def call(label, a=None, limit=2_000_000, pre=b""):
     m.clear_breakpoint(TRAP); assert m.pc == TRAP, "%s did not return (pc=%04x)" % (label, m.pc); return used
 def pg(): return [v for p, v in outs if p == 0x7FFD]
 def rd(a, n): return bytes(m.memory[a:a + n])
-def in_code(pc): return 0x6C00 <= pc < 0x10000 or S["LOWCODE"] <= pc < S["LOWCODE"] + len(lowimg) or TRAP <= pc < SCR + 16
+def in_code(pc): return 0x6C00 <= pc < 0x10000 or S["LOWCODE"] <= pc < S["LOWCODE"] + len(lowimg) or TRAP <= pc < SCR + 16   # C000h..: bank 0 / 1 / 3 code alike
 def frames(n, stub):
     """run `stub` (a loop, placed at SCR) for n frames of 69,888 T with one INT per frame. A refused INT (the stop fell on a
     prefix / EI instruction, where the core refuses) is re-offered within the 32 T the ULA holds the line. Returns
@@ -98,6 +101,11 @@ def frames(n, stub):
             if m.on_handle_active_int(): acc += 1; break
             m.ticks_to_stop = 4; m.run()
     m.ticks_to_stop = 8000; m.run()
+    # lane M2: the last frame may stop inside a paged phase (bank 3 in hr_pass, bank 7 in fl_frame): let it end (bank 0 back,
+    # BANKM bank bits 0) before the caller judges the paging state or re-enters code at C000h.. (tools/test_flip.py does the same)
+    for k in range(40):
+        if cur[0] == 0 and (m.memory[BANKM] & 7) == 0: break
+        m.ticks_to_stop = 5000; m.run()
     return acc, outside
 RENDER_LOOP = bytes([0x3E, 0xFE, 0xED, 0x47, 0xED, 0x5E, 0xFB, 0xCD, S["render"] & 255, S["render"] >> 8, 0x18, 0xFB])                # im 2 / ei / loop: call render / jr loop
 MAIN_LOOP = bytes([0x3E, 0xFE, 0xED, 0x47, 0xED, 0x5E, 0xFB, 0xCD, S["render"] & 255, S["render"] >> 8, 0xCD, S["steps"] & 255, S["steps"] >> 8, 0x18, 0xF8])   # + call steps
@@ -125,6 +133,7 @@ for lid in range(1, 9):
     check(acc == 30 and ticks == 30 and outside == 0 and (m.memory[BANKM] & 7) == 0,
           "R%d 30 INTs @69,888 T through render (start view): accepted %d, ticks %d, PC outside code %d, bank %d paged after" % (lid, acc, ticks, outside, m.memory[BANKM] & 7))
     save = rd(S["fl_frame"], 1); m.set_memory_block(S["fl_frame"], b"\xc9")      # render without the copy phase (BUF stays pristine)
+    m.set_memory_block(S["fl_req"], b"\x00")   # lane M2: drop a flip left pending by the frames above - call() injects no interrupts and hr_pass's fl_wait would spin on it
     call("render", limit=6_000_000); call("render", limit=6_000_000); buf_t = rd(S["BUF"], 2304); nvis_t = m.memory[S["nvis"]]
     things_save = rd(S["things"], NT * 8); m.set_memory_block(S["things"], bytes(NT * 8))
     call("render", limit=6_000_000); buf_e = rd(S["BUF"], 2304); nvis_e = m.memory[S["nvis"]]

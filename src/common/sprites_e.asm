@@ -9,7 +9,12 @@ vis_sort_draw:
 vsd_l:  push bc
         push hl
         IF DEFINED HIRES
-        call hr_pass           ; lane S (128K spike): zombies -> bank-3 hi-res blitter, everything else -> draw_sprite (lowcode.asm)
+        IF NOT DEFINED BANK3
+BANK3 equ 1                    ; lane M2 (7 Nov 2026): HIRES implies BANK3
+        ENDIF
+        ENDIF
+        IF DEFINED BANK3
+        call hr_pass           ; lane S (128K spike) / lane M2 (default 128K tape): zombies (HIRES) and types 3..6 -> bank-3 hi-res blitter, everything else -> draw_sprite (lowcode.asm)
         ELSE
         call draw_sprite
         ENDIF

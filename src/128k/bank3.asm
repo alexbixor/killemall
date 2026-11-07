@@ -7,6 +7,20 @@
 ; dc_wlo, ds_ink, dc_bcol, isr. Nothing in bank 0 is reachable from here (enemy_h, VSTEP, COLBASE, mul168 are re-done below).
 ; Entry hr_entry (F000h): HL -> vis entry (hv, c0, nc, data ptr, thing). Returns E = 1 handled (zombie frames spr_4..spr_7, drawn
 ; or culled) / E = 0 not a zombie (hr_pass then runs the old draw_sprite). Design: build/night/S_design.md.
+;
+; lane M2 (7 Nov 2026, pasmo --equ BANK3=1 = EVERY 128K build, tools/build128.sh too): bank 3 now draws enemy types 3..6
+; (shotgunner, floater, brute, boss) from their own 32x48 art (gen/hires_art2.asm, pixel-doubled assets/sprites_m4, org bank3_org
+; below the code) through the same blitter. hr_entry first identifies the frame 0..3 (walk A / walk B / attack / dead) by the pointer
+; match against spr_table[4..7] (ETAB sprite column 4 for rows 2..6), THEN reads the thing (vis entry +5 = thing index; things
+; record 8 B: +0 type, +5 state, +6 hp | flash << 6): type 2 (zombie) -> the hi-res zombie frames under HIRES, else E = 0 (the
+; default tape keeps its old 3-px zombie); types 3..6 -> HRFRM2[(type-2)*4 + frame]; anything else -> E = 0. ds_ink reproduces
+; blood.asm ds_inkl (bank 0 is paged out, so it cannot be called): flash pending (hp byte >= 40h: subtract 40h, store back, ink
+; 20h) else corpse (state 3: ink A0h) else HRINK[type] (= the ETAB ink column). The image is loaded at bank3_org (mktap128
+; "build/bank3.bin@<bank3_org>"); the gap between art2_end and F000h is zero-filled by pasmo --bin. Externals added: things,
+; and --equ HIRES=1 (build128_hires.sh only) for the zombie decision.
+        org 0DE00h
+bank3_org:
+        include "gen/hires_art2.asm"   ; tools/gen_hires.py: HRFRM2 (5 x 4 frame pointers), types 3..6 frames, art2_end (<= F000h, build gate)
         org 0F000h
 hr_entry:
         push hl
@@ -33,23 +47,73 @@ hr_fn:  inc bc
         ld a,d
         cp 4
         jr c,hr_fl
-        pop hl
-        ld e,0                 ; not a zombie
+hr_no:  pop hl
+        ld e,0                 ; not one of the four enemy frames / not a type bank 3 draws
         ret
-hr_found:
-        ld a,d
-        add a,a
+hr_found:                      ; D = frame 0..3; (SP) -> vis entry
+        pop hl
+        push hl
+        ld bc,5
+        add hl,bc
+        ld a,(hl)              ; thing index 0..35 (LEVELS8: 36 things = 288 B, so 16-bit idx*8)
         ld l,a
         ld h,0
-        ld de,HRFRM
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        ld bc,things
+        add hl,bc              ; HL -> thing record
+        ld a,(hl)
+        and 31                 ; type (sprites_e.asm draw_sprite does the same)
+        ld (hr_type),a
+        cp 2
+        jr c,hr_no             ; 0 / 1 imp: old path
+        cp 7
+        jr nc,hr_no            ; 7..31: no bank-3 art
+        IF NOT DEFINED HIRES
+        cp 2
+        jr z,hr_no             ; zombie on the default tape: old 3-px draw_sprite (lane M2 rule 2)
+        ENDIF
+        sub 2
+        add a,a
+        add a,a
+        add a,d                ; (type-2)*4 + frame
+        add a,a                ; word index
+        push hl
+        ld e,a
+        ld d,0
+        ld hl,HRFRM2
         add hl,de
         ld e,(hl)
         inc hl
         ld d,(hl)
         ld (hr_frm),de         ; 32 column pointers of the 32x48 frame
-        ld a,040h
-        ld (ds_ink),a          ; zombie green for the colour marks (dc_mark); flash / corpse stain not reproduced (spike)
-        pop hl
+        pop hl                 ; HL -> thing record
+; ds_ink = blood.asm ds_inkl's rule: red flash (hp byte >= 40h, one flash frame used per drawn frame) / corpse stain / type ink
+        ld de,6
+        add hl,de              ; HL -> hp | flash frames << 6
+        ld a,(hl)
+        sub 040h
+        jr c,hr_nofl           ; no flash pending (hp < 64)
+        ld (hl),a              ; one flash frame used
+        ld a,020h              ; red (attr_write adds BRIGHT)
+        jr hr_inks
+hr_nofl:
+        dec hl                 ; HL -> state (0 idle 1 chase 2 attack 3 dead)
+        ld a,(hl)
+        cp 3
+        ld a,0A0h              ; corpse: red, not BRIGHT (CMX bit 7) = the floor stain (M2.6 blood 3)
+        jr z,hr_inks
+        ld a,(hr_type)
+        ld hl,HRINK
+        add a,l
+        ld l,a
+        jr nc,$+3
+        inc h
+        ld a,(hl)              ; HRINK[type] = ETAB[type].ink
+hr_inks:
+        ld (ds_ink),a          ; ink << 4 for the colour marks (lowcode.asm dc_mark)
+        pop hl                 ; HL -> vis entry
         ld a,(hl)
         ld (hr_hv),a
         inc hl
@@ -314,6 +378,9 @@ hm_l:   add hl,hl
         add hl,de
 hm_n:   djnz hm_l
         ret
+; HRINK[type] = ink << 4 of enemy types 0..6: must equal etab.asm ETAB +9 (the ETAB ink column; tools/test_m2.py asserts it
+; against the engine image). 1 imp magenta, 2 zombie green, 3 shotgunner magenta, 4 floater yellow, 5 brute cyan, 6 boss blue.
+HRINK:  defb 0,030h,040h,030h,060h,050h,010h
 hr_hv:  defb 0
 hr_hd:  defb 0
 hr_cx:  defb 0
@@ -324,6 +391,7 @@ hr_cnt: defb 0
 hr_v0:  defb 0
 hr_code: defb 0
 hr_msk: defb 0
+hr_type: defb 0                ; lane M2: thing type of the sprite being drawn
 hr_k0:  defw 0
 hr_step: defw 0
 hr_ustep: defw 0
@@ -331,7 +399,7 @@ hr_uacc: defw 0
 hr_frm: defw 0
 hr_run: defw 0
 hr_buf: defw 0
-hr_code_end:
+hr_code_end:                   ; must stay <= F300h (HRBLO; build gate)
 ; ---- tables (gen/hires_tabs.asm, tools/gen_hires.py). HRBLO/HRBHI F300h/F360h: BUF byte-column base per 2-px column k
 ; (BUF + 96*(k>>2)); HRMSK F400h: slot bits (C0h,30h,0Ch,03h); HRRAY F460h: ray column of pixel 2k = 8*(2k div 24) +
 ; PXRAY[2k mod 24] (M2.5C 3,3,2,4,4,2,3,3-px rays, tools/test_game_sprites.py PXRAY)

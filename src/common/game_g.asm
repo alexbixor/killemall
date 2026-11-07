@@ -41,11 +41,19 @@ hs_l:   push hl
         cp (hl)
         jr nc,hs_next          ; wall nearer than the sprite in the centre column
         ld a,e
+        IF DEFINED LEVELS8
+        ld l,a                 ; lane K1: idx*8 as 16 bits (36 things; same 10 B as the 8-bit form below)
+        ld h,0
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        ELSE
         add a,a
         add a,a
         add a,a
         ld l,a
         ld h,0
+        ENDIF
         ld de,things
         add hl,de
         push hl
@@ -71,8 +79,13 @@ hs_next:
 hs_hv:  defb 0
 enemy_hit:
         ld a,(ix+6)
+        IF DEFINED LEVELS8
+        and 63                 ; lane K1: hp in units of 10 (ETAB: imp/zombie/shotgunner 3, floater 6, brute 12, boss 40 <= 63)
+        sub 1                  ; one pistol hit = one unit; bits 6..7 = red flash frames (blood.asm ds_inkl) as before
+        ELSE
         and 31                 ; M2.6 blood 1: bits 6..7 = red flash frames left (blood.asm ds_inkl)
         sub 10
+        ENDIF
         jr c,eh_dead
         jr z,eh_dead
         or 0xC0                ; flash 3 frames

@@ -37,10 +37,19 @@ BANKM     equ 23388
 B1_ISR    equ 49152+0          ; bank-1 fixed table (bank1.asm): jp snd_isr
 B1_FX     equ 49152+3          ; jp snd_fx      A = 1..10
 B1_MUSIC  equ 49152+6          ; jp snd_music   A = 0/1/2
+        IF DEFINED LEVELS8
+; lane K1 (6 Nov 2026, pasmo --equ LEVELS8=1): 8 level slots of LEVEL_BLK = 1 + 8 + 1024 + 3 x 36 = 1141 B, table 48 B.
+B1_LEVTAB equ 49152+9          ; dw lev0..lev7 (1141-byte level_data images, byte 0 = id 1..8); C009h..C018h, one page
+B1_OPTM   equ 49152+25         ; opt_music / opt_sfx copies read by the bank-1 player
+B1_OPTS   equ 49152+26
+B1_LOAD   equ 49152+32         ; jp b1_load: H = level id 1..8, DE = level_data -> level image + the low code block (LOWCODE)
+LEVEL_BLK equ 1141
+        ELSE
 B1_LEVTAB equ 49152+9          ; dw lev0, lev1, lev2 (1081-byte level_data images, byte 0 = id 1..3)
 B1_OPTM   equ 49152+15         ; opt_music / opt_sfx copies read by the bank-1 player
 B1_OPTS   equ 49152+16
 LEVEL_BLK equ 1081
+        ENDIF
 
 PAGEN   macro n                ; 7FFDh = 10h + n: ROM 1 (48K ROM font used by print), screen 0, bank n; BANKM updated.
         ld a,010h+n            ; fixed value on purpose: under ZEsarUX's 128K autoload BANKM read 00h while 7FFDh was 10h,
@@ -230,6 +239,28 @@ snd_jp: jp (hl)
 
 ; load_level: A = level id 1..3 -> copy that level image from bank 1 over the engine's level_data slot (1081 bytes).
 ; Replaces T6's tape load_level (make128.py renames the tape routine to load_level_tape). Destroys AF BC DE HL.
+        IF DEFINED LEVELS8
+; lane K1: A = level id 1..8. The table lookup and both copies (level image -> level_data, low code block -> LOWCODE 5BC0h,
+; state.asm) run in bank 1 (bank1.asm b1_load: the fixed area below COLBASE has 1 B of slack, so this is 12 B shorter than
+; the inline form below). H carries the id across fl_pg1 (which destroys A and BC only); the stack is in the fixed area (F2).
+load_level:
+        di
+        ld h,a
+        IF DEFINED FLIP
+        call fl_pg1
+        ELSE
+        PAGEN 1
+        ENDIF
+        ld de,level_data
+        call B1_LOAD
+        IF DEFINED FLIP
+        call fl_pgb
+        ELSE
+        PAGEN 0
+        ENDIF
+        ei
+        ret
+        ELSE
 load_level:
         di
         dec a
@@ -256,3 +287,4 @@ load_level:
         ENDIF
         ei
         ret
+        ENDIF                  ; LEVELS8

@@ -85,14 +85,34 @@ er_fire:
                                ; the image must end below 0FFFFh: pasmo's TAP length wraps to 0 at the 64K limit)
 ETAB:                          ;  hp step mel rng rrg tim wak flg spr ink  spare
         defb  0,  0,  0,  0,  0,  0,  0,  0,  0,   0,  0,0,0,0,0,0   ; 0 none
+        IF DEFINED LEVELS8
+; lane K1 (6 Nov 2026, 128K, pasmo --equ LEVELS8=1): hp in UNITS OF 10 (game_g.asm enemy_hit takes 1 per pistol hit; the
+; byte keeps bits 6..7 for the red flash, so hp <= 63 - the boss' 400 hp of the Next edition fits as 40). Numbers = the Next
+; edition's ETAB_B (src/next/game_b_next.asm); flags use THIS file's bits: bit1 ranged is the only one the AI reads (game_e.asm),
+; bit0 floating / bit3 boss are reserved (no code: the floater walks). Sprite column = 4 (zombie frames) for rows 3..6 = the M1
+; stopgap so nothing indexes past spr_table (18 entries); the bank-3 blitter (BANK3) picks the real art by type (M2).
+; Ink: shotgunner magenta, floater yellow, brute cyan, boss BRIGHT blue (20h red would hide the hit flash on the toughest enemy).
+        defb  3, 15, 10,  0,  0, 25, 10,  4,  0, 30h,  0,0,0,0,0,0   ; 1 imp (magenta)         hp 30
+        defb  3, 15, 15,  0,  0, 25, 10,  4,  4, 40h,  0,0,0,0,0,0   ; 2 zombie (green)        hp 30
+        defb  3, 13,  0, 20,  6, 20, 10,  2,  4, 30h,  0,0,0,0,0,0   ; 3 shotgunner (magenta)  hp 30, ranged 20 dmg, range 6
+        defb  6, 10,  0, 15,  8, 30, 10,  3,  4, 60h,  0,0,0,0,0,0   ; 4 floater (yellow)      hp 60, ranged 15 dmg, range 8 (walks)
+        defb 12, 18, 25,  0,  0, 20, 10,  4,  4, 50h,  0,0,0,0,0,0   ; 5 brute (cyan)          hp 120, melee 25
+        defb 40, 13, 35, 20,  8, 15, 10, 0Eh, 4, 10h,  0,0,0,0,0,0   ; 6 boss (blue)           hp 400, melee 35, ranged 20, range 8
+        ELSE
         defb 30, 15, 10,  0,  0, 25, 10,  4,  0, 30h,  0,0,0,0,0,0   ; 1 imp (magenta)
         defb 30, 15, 15,  0,  0, 25, 10,  4,  4, 40h,  0,0,0,0,0,0   ; 2 zombie (green)
         defb 30, 15, 15,  0,  0, 25, 10,  4, 18, 40h,  0,0,0,0,0,0   ; 3 shotgunner PLACEHOLDER = zombie row, sprites 18..21
         defb 30, 15, 15,  0,  0, 25, 10,  4, 22, 40h,  0,0,0,0,0,0   ; 4 floater    PLACEHOLDER (128K/Next; sprite cache)
         defb 30, 15, 15,  0,  0, 25, 10,  4, 26, 40h,  0,0,0,0,0,0   ; 5 brute      PLACEHOLDER
         defb 30, 15, 15,  0,  0, 25, 10,  4, 30, 40h,  0,0,0,0,0,0   ; 6 boss       PLACEHOLDER
+        ENDIF
 ITSPR:  defb 8,9,10,11,8,12,13,13      ; item types 16..23 -> sprite id (health, ammo, red key, blue key, shield, barrel, lamp, lamp)
 ITINK:  defb 20h,60h,20h,10h,50h,0,0,0 ; item types 16..23 -> ink << 4 (red, yellow, red, blue, cyan, none, none, none)
                                ; (the old THSPR / INKTAB tails; entries 0..15 of those tables came from ETAB rows 1..6 /
                                ; were never looked up: types 7..15 do not exist)
 etab_end:
+        IF DEFINED LEVELS8
+TINTTAB8: defb 7,5,6,7,2,3,5,6 ; lane K1: window ink per level 1..8 (kea48.asm win_tint `and 7`): Entry white, Barracks cyan,
+                               ; Furnace yellow, Crypt white, Cistern red, Armoury magenta, Gallery cyan, Throne yellow.
+                               ; 0FFF0h..0FFF7h: the image still ends below 0FFFFh (pasmo TAP length limit), mktap128 asserts it.
+        ENDIF

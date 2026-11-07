@@ -149,11 +149,16 @@ new_game:                      ; stats reset + level 1 (resident copy restored f
         ld (shield),a          ; M2.2
         ld (door_cool),a
         call doors_restore
+        IF DEFINED LEVELS8
+        ld a,1                 ; lane K1: level 1 ALWAYS comes from bank 1 (shim128.asm load_level): the same copy also puts
+        call load_level        ; the low code block (lowcode.asm) at LOWCODE 5BC0h, which the tape image does not cover
+        ELSE
         ld a,(level_data)
         cp 1
         jr z,ng1
         ld a,1
         call load_level        ; level 1 was overwritten by level 2/3: fetch it again from tape
+        ENDIF
 ng1:    jp init_game
 ; M2.6: apply_opts lives in ../common/floor.asm now (six CLRBUF fill words: D5 ceiling DE'/BC'/IX/IY + floor DE/BC)
 hud_redraw:
@@ -186,7 +191,11 @@ menu_bg:                       ; back from the game: the frozen 3D view stays, r
         ld de,18624+10         ; row 14, column 10
         jp print
 name_txt: defb "KILL'EM ALL",0
+        IF DEFINED LEVELS8
+NLEVELS equ 8                  ; lane K1 (128K, pasmo --equ LEVELS8=1): levels 1..8 from bank 1 (shim128.asm load_level)
+        ELSE
 NLEVELS equ 3
+        ENDIF
         IF DEFINED FLIP
         ELSE                   ; lane F: dropped under FLIP (dead on the 128K: shim128.asm load_level; pays for fl_* code)
 LDBYTES equ 0x0556             ; ROM loader: IX = dest, DE = length, A = flag, carry = load
@@ -285,9 +294,15 @@ ig_chj: ld (hl),e
 ; M2.5 win_tint: the whole 3D window has ONE ink (zero attribute clash); it is chosen per level from TINTTAB and written once
 ; into the window attribute cells (12 rows x 24 cells, rows 1..12 cols 4..27). Frame cells (cols 3 / 28) and the HUD stay as they are.
 win_tint:
+        IF DEFINED LEVELS8
+        ld hl,TINTTAB8         ; lane K1: 8 tints in the top page (etab.asm, bank 0); the fixed area below COLBASE is full
+        ld a,(level)           ; 0-based; and 7 keeps a stale value inside the 8-entry table
+        and 7
+        ELSE
         ld hl,TINTTAB
         ld a,(level)           ; 0-based; and 3 keeps a stale value inside the 4-entry table
         and 3
+        ENDIF
         add a,l
         ld l,a
         adc a,h
@@ -307,7 +322,10 @@ wt2:    ld (hl),a
         dec c
         jr nz,wt1
         ret
+        IF DEFINED LEVELS8
+        ELSE                   ; lane K1: TINTTAB8 (etab.asm) replaces this table under LEVELS8
 TINTTAB: defb 7,5,6,7          ; level 1 Entry white, 2 Barracks cyan, 3 Furnace yellow, (spare) white
+        ENDIF
 
 ; A = x int, C = y int -> HL = map pointer / A = cell code
 cell_ptr:
@@ -1030,7 +1048,16 @@ hi_end  equ $
         include "gen/sprites48.asm"
 level_data:
         incbin "gen/level48.bin"   ; low block (ends below 32768; Z80-core test harnesses live in page 0x6A)
+        IF DEFINED LEVELS8
+        defs 1141-1081         ; lane K1: the slot is LEVEL_BLK = 1141 B (36 things) on the 128K; the resident level-1 image
+                               ; (1081 B, 10 things) + zeros == build/lev128_0.bin, so the first game needs no bank-1 copy
+; lane K1: the low code block (lowcode.asm) runs at LOWCODE 5BC0h (state.asm), copied from bank 1 by load_level (bank1.asm
+; b1_load); its symbols come from the generated equates (tools/lev128.py from build/lowcode128.sym, src/128k/lowcode128.asm).
+        include "../128k/gen/lowcode128_equ.asm"
+low_end equ $                  ; must stay <= 0x8000 (build gate)
+        ELSE
         include "../common/lowcode.asm"        ; M2.6 P2E: sprite colour marks, in the free tail of the low block (low_end <= 0x8000)
+        ENDIF
 ; lane G (5 Nov 2026): the 255 bytes above the IM2 vector table (TABLE 0FE00h..0FF00h, filled by start) were never used on
 ; either edition (bank 0 on the 128K, paged whenever game code runs): ETAB (enemy table, 128 B at 0FF70h, page-contained)
 ; and the enemy step code live there. The tape block now runs to 0FFEFh (the zeros it loads over the stack / TABLE area are

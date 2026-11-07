@@ -24,7 +24,18 @@ CMIN        equ DRAM+0x20       ; M2.6 P2E: 24 x (12 - first marked cell row | 0
                                 ; page (ROWTAB holds 25 BYTES, 0x5D00..0x5D18; the old 32 B ds_rmin/ds_rmax slot is inside this range)
 zbuf        equ DRAM+0x60       ; 64 B: per ray column wall virtual height 0..255 (0 = none)
 things      equ DRAM+0xA0       ; NTHINGS*8 = 128 B runtime thing table (sprites.asm things_init)
+        IF DEFINED LEVELS8
+; lane K1 (6 Nov 2026, 128K only, pasmo --equ LEVELS8=1): NTHINGS 36 -> things grows in place to 288 B (0x5DA0..0x5EBF),
+; so vis moves below DRAM into the dead 128K editor page (0x5B60..0x5BBF; only BANKM 0x5B5C lives there) and door_log +
+; fe_tmpk take the old spare 0x5EC0..0x5EFF. The relocated low code block (lowcode.asm, LOWCODE 0x5BC0..) follows vis;
+; the FLIP stack (FSTACK 0x5D00, grows down) keeps 0x5C26..0x5CFF (218 B, measured depth 16 B + ISR frames).
+vis         equ 0x5B60          ; VISMAX*6 = 96 B vis list (sprites_b.asm)
+LOWCODE     equ 0x5BC0          ; run-time copy of the low code block (src/128k/lowcode128.asm image in bank 1, B1_BOOT)
+door_log    equ DRAM+0x1C0      ; 48 B = 16 x (cell ptr, code) opened doors (game_b.asm): 0x5EC0..0x5EEF
+fe_tmpk     equ DRAM+0x1F0      ; 16 B key redefine scratch (frontend.asm): 0x5EF0..0x5EFF
+        ELSE
 vis         equ DRAM+0x120      ; VISMAX*6 = 96 B vis list (sprites_b.asm)
 door_log    equ DRAM+0x180      ; 48 B = 16 x (cell ptr, code) opened doors (game_b.asm)
 fe_tmpk     equ DRAM+0x1B0      ; 16 B key redefine scratch (frontend.asm)
-DRAM_END    equ DRAM+0x1C0      ; 0x5EC0; 0x5EC0..0x5EFF spare; 0x5F00..0x5FFF = SOLIDPG (kea48.asm, far-wall solid texture)
+        ENDIF
+DRAM_END    equ DRAM+0x1C0      ; 0x5EC0; 0x5EC0..0x5EFF spare (LEVELS8: door_log + fe_tmpk); 0x5F00..0x5FFF = SOLIDPG (kea48.asm, far-wall solid texture)

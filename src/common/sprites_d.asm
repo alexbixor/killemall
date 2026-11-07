@@ -108,11 +108,20 @@ va_put: ld a,(thv)
         ld de,things
         or a
         sbc hl,de
+        IF DEFINED LEVELS8
+        add hl,hl              ; lane K1: 36 things = 288 B, so the index needs bit 0 of H: HL = 8*idx -> HL*32 = idx*256
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        ld a,h                 ; thing index 0..35 (same 6 B as the 8-bit form below)
+        ELSE
         ld a,l
         rrca
         rrca
         rrca
         and 31                 ; thing index = (IX - things) / 8
+        ENDIF
         pop hl
         ld (hl),a
         ld hl,nvis

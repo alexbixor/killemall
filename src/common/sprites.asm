@@ -1,7 +1,11 @@
 ; sprites.asm (T1; lane G: hp from ETAB) - things table, camera transform, visibility list. Drawing is in sprites_b.asm.
 ; thing record (8 bytes): +0 type (0 none; 1 imp 2 zombie 16 health 17 ammo 18 red key 19 blue key 21 barrel 22 lamp)
 ;   +1 x (8.8 word) +3 y (8.8 word) +5 state (0 idle 1 chase 2 attack 3 dead) +6 hp +7 timer/anim
+        IF DEFINED LEVELS8
+NTHINGS equ 36                 ; lane K1 (128K, pasmo --equ LEVELS8=1): level 08 has 36 things (state.asm: things 0x5DA0..0x5EBF)
+        ELSE
 NTHINGS equ 16
+        ENDIF
 ; perp_h: HL = perpendicular distance 8.8 -> A = wall virtual height (same lookup the renderer uses). HL preserved.
 perp_h: ld a,h
         cp 4
@@ -116,7 +120,11 @@ things_init:
 ti1:    ld b,a
 ti_l:   ld a,(hl)
         ld (de),a              ; type
+        IF DEFINED LEVELS8
+        ld c,3                 ; lane K1: hp in units of 10 (ETAB rows, game_g.asm enemy_hit sub 1); items never read it
+        ELSE
         ld c,30                ; items keep hp 30 as before (never read: no AI, the hitscan ignores them)
+        ENDIF
         bit 4,a
         jr nz,ti_hp
         push hl

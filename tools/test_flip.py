@@ -41,7 +41,7 @@ def on_out(port, val):
             m.set_memory_block(0xC000, banks[b]); cur[0] = b
 m.set_output_callback(on_out); m.set_input_callback(lambda p: 0xFF)
 def bank(n): return bytes(m.memory[0xC000:0x10000]) if cur[0] == n else banks[n]
-TRAP, SCR = 0x5EC0, 0x5ED0
+TRAP, SCR = 0x5B00, 0x5B10   # lane K1 (6 Nov 2026): was 5EC0h/5ED0h = door_log/fe_tmpk under LEVELS8 -> dead editor page below BANKM (5B5Ch)
 def call(label, a=None, limit=2_000_000):
     stub = (bytes([0x3E, a]) if a is not None else b"") + bytes([0xCD, S[label] & 255, S[label] >> 8, 0xC3, TRAP & 255, TRAP >> 8])
     m.set_memory_block(SCR, stub); m.set_memory_block(TRAP, bytes([0xC3, TRAP & 255, TRAP >> 8])); m.pc = SCR; m.sp = S["FSTACK"]
@@ -150,7 +150,9 @@ for f in range(60):
     while m.ticks_to_stop > 0:
         m.run()
         if m.halted: break
-    if m.on_handle_active_int(): accepted += 1
+    for k in range(8):                     # lane K1 (6 Nov 2026): the ULA holds INT for 32 T, so an INT the core refuses because the
+        if m.on_handle_active_int(): accepted += 1; break     # frame boundary fell on an EI / DD-FD-ED-CB prefix is re-offered within that window
+        m.ticks_to_stop = 4; m.run()       # (the K1 build's render timing put 2 of 60 boundaries on such instructions; the pre-K1 one none)
     if m.memory[S["fl_req"]]: req_seen += 1
 m.ticks_to_stop = 6000; m.run()
 m.set_write_callback(lambda a, v: None); m.unmark_addrs(0x4000, 0x1B00, m.WRITE_MARK); m.unmark_addrs(0xC000, 0x1B00, m.WRITE_MARK)
@@ -163,6 +165,10 @@ check(sw[0] >= 8 and switch_outside_isr[0] == 0, "F3 display switches: %d (>= 8 
 check(bad_disp[0] == 0, "B tear-free: writes into the DISPLAYED screen while displayed = %d (NOTE: the write hook does not land values; counts only)" % bad_disp[0])
 # frame content proof (hook off, so values land): one more full frame into the hidden screen, then compare
 set_bankm(m.memory[BANKM] | 0)
+for k in range(64):                        # lane K1: a flip still pending from the loop's last frame -> let the ISR apply it first (fl_wait
+    if not m.memory[S["fl_req"]]: break    # inside render spins until the ISR clears fl_req, and call() injects no interrupts)
+    if m.on_handle_active_int(): m.ticks_to_stop = 6000; m.run()
+    else: m.ticks_to_stop = 4; m.run()
 call("render", limit=6_000_000)                # ends with fl_req set for the hidden screen
 hid = 0xC000 if (m.memory[BANKM] & 8) == 0 else 0x4000
 buf = bytes(m.memory[S["BUF"]:S["BUF"] + 2304])

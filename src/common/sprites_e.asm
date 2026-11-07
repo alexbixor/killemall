@@ -36,11 +36,19 @@ draw_sprite:
         ld (ds_spr),de
         inc hl
         ld a,(hl)              ; thing index -> type (bit 4: item) for the enemy height rule (M2.5: no ink lookup, one ink)
+        IF DEFINED LEVELS8
+        ld l,a                 ; lane K1: idx*8 as 16 bits (idx up to 35 -> 280; same 10 B as the 8-bit form below)
+        ld h,0
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        ELSE
         add a,a
         add a,a
         add a,a
         ld l,a
         ld h,0
+        ENDIF
         ld de,things
         add hl,de
         ld a,(hl)

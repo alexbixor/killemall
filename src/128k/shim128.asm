@@ -24,9 +24,14 @@
 ;     bank 0 paged; fl_ca copies them into the hidden screen's attribute window with bank 7 paged.
 ;  F5 snd_isr forwards opt_music / opt_sfx (bank-0 variables) to bank 1 only when it interrupted bank 0 (BANKM bits
 ;     0..2 = 0); when it interrupted a bank-7 phase the copies forwarded by the previous tick stay.
-;  F6 hud_dirty <> 0 (hud.asm: print_char, keys_draw, hud_init set it = every HUD pixel writer) -> fl_hud copies pixel
-;     rows 104..191 + attribute rows 13..23 of screen 0 (where the HUD code draws) into bank 7 before the switch is
-;     requested, then clears it. Static HUD = copied once; a HUD change = one extra 3.1 KB copy (~66k T) that frame.
+;  F6 hud_dirty <> 0 (hud.asm: print_char, keys_draw, hud_init set it = every HUD pixel writer) -> fl_hud copies the
+;     WHOLE of screen 0 (6912 B: pixels + attributes) into bank 7 before the window is drawn there, then clears it -
+;     only in frames where bank 7 is the hidden screen (else the copy waits one frame, see fl_hud). Static HUD = copied
+;     once; a HUD change = one extra 6.9 KB copy (~145k T, 2 ticks) in one frame. The window part of the copy is
+;     overwritten right after by fl_cb / fl_ca, so the hidden screen == screen 0 outside the window (test_flip.py F6).
+;     (Lane F2, 7 Nov 2026: lane F copied 4D00h..57FFh + attribute rows 13..23 only - that is NOT "pixel rows 104..191"
+;     (Spectrum interleave: rows 13..15 live at 48A0h+line*256) and it missed hud_init's red window frame (rows 0..12,
+;     columns 3/28) altogether, so frame, rail and label tops existed in screen 0 only and flashed at the flip rate.)
 ;  F7 every exit from the frame loop (pause menu, menu, level clear / death message wait) calls fl_show0 first: screen 0
 ;     displayed, request drained, so front end / menu / messages draw into the displayed screen as on the 48K.
 ;  Code placement (the fixed area below COLBASE has ~9 B of slack: every byte added there moves COLBASE, see F_LAYOUT):
@@ -173,18 +178,20 @@ fca_l:  ld bc,24
         dec a
         jr nz,fca_l
         jp fl_pg0
-; ---- fl_hud (fixed area: the hi_end gap could not hold it): screen 0 pixel rows 104..191 (4D00h..57FFh, 2816 B) -> bank 7 CD00h..D7FFh and screen 0 attribute rows
-; 13..23 (59A0h..5AFFh, 352 B) -> bank 7 D9A0h..DAFFh; hud_dirty := 0. Interrupts on (rule F2). Destroys AF BC DE HL.
+; ---- fl_hud (fixed area: the hi_end gap could not hold it): rule F6 - screen 0 (4000h..5AFFh, 6912 B) -> bank 7 (C000h..DAFFh),
+; ONLY while bank 7 is the hidden screen (cb_hi = C0h): with bank 7 displayed the copy would put screen 0's older window into
+; the picture being shown, so hud_dirty stays set and the copy happens at the next frame (bank 7 is hidden then, and screen 0,
+; where the HUD code drew, is the one shown by the flip of this frame: each screen shows the new HUD from its first display).
+; hud_dirty := 0 after the copy. Interrupts on (rule F2). Destroys AF BC DE HL. 22 B (lane F's two partial copies were 28 B).
 fl_hud:
+        ld a,(cb_hi)
+        cp 0C0h
+        ret nz                 ; bank 7 displayed: skip, hud_dirty stays <> 0
         xor a
         ld (hud_dirty),a
-        ld hl,04D00h
-        ld de,0CD00h
-        ld bc,00B00h
-        call fl_ldir
-        ld hl,059A0h
-        ld de,0D9A0h
-        ld bc,0160h
+        ld hl,04000h
+        ld de,0C000h
+        ld bc,01B00h
         jp fl_ldir
 ; ---- fl_show0 (fixed area): rule F7. Called (interrupts on, bank 0 paged) before anything draws for the user outside the frame
 ; loop: screen 0 displayed, request drained, cb_hi back to screen 0. Idempotent; costs <= 2 ticks when a switch was pending.

@@ -125,7 +125,12 @@ mir_ok = bank(7)[0xFDFD - 0xC000:0xFF01 - 0xC000] == bytes(m.memory[0xFDFD:0xFF0
 check(mir_ok and cur[0] == 0 and m.memory[BANKM] == 0x10, "F2 fl_init: 260 B IM2 table + ISRVEC mirrored into bank 7 (%s), bank 0 back, BANKM 10h" % mir_ok)
 m.set_memory_block(S["hud_dirty"], b"\x01")
 m.set_memory_block(S["ticks"], b"\x00\x00"); m.set_memory_block(S["step_t"], b"\x00"); m.set_get_int_vector_callback(lambda: 0xFF)
-m.set_memory_block(0x4000, bytes(0x1B00)); set_bankm(0x17); m.set_memory_block(0xC000, bytes(0x1B00)); set_bankm(0x10)
+# lane F2 (7 Nov 2026, rule F6): screen 0 starts as a non-zero pattern = "what the HUD code drew" (frame, rail, labels, bars live
+# there); bank 7 starts zeroed. After the frames, bank 7 must equal screen 0 everywhere OUTSIDE the 24 x 12 window (pixels +
+# attributes), i.e. fl_hud mirrored the whole screen - lane F copied 4D00h..57FFh + attribute rows 13..23 only (the red window
+# frame and the top lines of rows 13..15 never reached bank 7 and flashed at the flip rate on the Deck).
+PAT0 = bytes((((i * 29 + 7) & 255) or 1) for i in range(0x1B00))
+m.set_memory_block(0x4000, PAT0); set_bankm(0x17); m.set_memory_block(0xC000, bytes(0x1B00)); set_bankm(0x10)
 m.set_memory_block(SCR, bytes([0x3E, 0xFE, 0xED, 0x47, 0xED, 0x5E, 0xFB, 0xCD, S["render"] & 255, S["render"] >> 8, 0x18, 0xFB]))
 m.pc = SCR; m.sp = S["FSTACK"]
 isr_lo, isr_hi = S["isr"], S["cls"]            # isr body lies in [isr, cls)
@@ -155,13 +160,18 @@ for f in range(60):
         m.ticks_to_stop = 4; m.run()       # (the K1 build's render timing put 2 of 60 boundaries on such instructions; the pre-K1 one none)
     if m.memory[S["fl_req"]]: req_seen += 1
 m.ticks_to_stop = 6000; m.run()
+# lane F2 (7 Nov 2026): the 60th tick may fall inside a bank-7 copy phase (fl_hud now mirrors 6912 B): let that phase end (fl_pg0)
+# before judging the paging state - and before call() re-enters code at C000h.. (with bank 7 paged that is screen data, not code)
+for k in range(40):
+    if cur[0] == 0 and (m.memory[BANKM] & 7) == 0: break
+    m.ticks_to_stop = 5000; m.run()
 m.set_write_callback(lambda a, v: None); m.unmark_addrs(0x4000, 0x1B00, m.WRITE_MARK); m.unmark_addrs(0xC000, 0x1B00, m.WRITE_MARK)
 m.set_output_callback(on_out)
 ticks = struct.unpack_from("<H", bytes(m.memory[S["ticks"]:S["ticks"] + 2]))[0]
 forced_bank0_shown = sum(1 for v in pg() if v in (0x10, 0x11, 0x17, 0x18, 0x19, 0x1F))
 check(accepted == 60 and ticks == 60 and cur[0] == 0 and (m.memory[BANKM] & 7) == 0,
-      "F2 60 INTs @69,888 T through render+flip: accepted %d, ticks=%d (none lost), bank 0 paged at the end, BANKM=%02Xh" % (accepted, ticks, m.memory[BANKM]))
-check(sw[0] >= 8 and switch_outside_isr[0] == 0, "F3 display switches: %d (>= 8 in 60 ticks at ~6.6 fps), all written inside the ISR (%d outside)" % (sw[0], switch_outside_isr[0]))
+      "F2 60 INTs @69,888 T through render+flip: accepted %d, ticks=%d (none lost), bank 0 paged after the copy phase, BANKM=%02Xh" % (accepted, ticks, m.memory[BANKM]))
+check(sw[0] >= 7 and switch_outside_isr[0] == 0, "F3 display switches: %d (>= 7 in 60 ticks: ~7.5 ticks/frame + ~2 ticks for the first frame's 6.9 KB HUD mirror; lane F: 8 with the 3.1 KB mirror), all written inside the ISR (%d outside)" % (sw[0], switch_outside_isr[0]))
 check(bad_disp[0] == 0, "B tear-free: writes into the DISPLAYED screen while displayed = %d (NOTE: the write hook does not land values; counts only)" % bad_disp[0])
 # frame content proof (hook off, so values land): one more full frame into the hidden screen, then compare
 set_bankm(m.memory[BANKM] | 0)
@@ -204,4 +214,32 @@ req = m.memory[S["fl_req"]]
 check(hid_win == pristine, "B hidden screen (%s) pixel window == rendered BUF (2304 B): %s" % ("bank 7" if hid == 0xC000 else "screen 0", hid_win == pristine))
 check(hid_attr == bytes(stage), "B hidden screen attribute window == attr_write's 288 staged cells: %s" % (hid_attr == bytes(stage)))
 check(req in (0x10, 0x18) and ((req >> 3) & 1) == (1 if hid == 0xC000 else 0), "B fl_req after the frame = %02Xh -> shows the screen just drawn" % req)
+# ---- 6 rule F6 (lane F2): outside the window the two screens are identical (bank 7 == screen 0's pattern + HUD-area bytes).
+# The 60-frame loop ran with the write hook on (values do not land), so the mirror is exercised here again with the hook off:
+# hud_dirty := 1, then frames (with the ISR flip between them) until fl_hud has run - at most 2, since it only copies in a
+# frame where bank 7 is the hidden screen.
+m.set_memory_block(S["hud_dirty"], b"\x01"); fr6 = 0
+while m.memory[S["hud_dirty"]] and fr6 < 3:
+    for k in range(64):
+        if not m.memory[S["fl_req"]]: break
+        if m.on_handle_active_int(): m.ticks_to_stop = 6000; m.run()
+        else: m.ticks_to_stop = 4; m.run()
+    call("render", limit=6_000_000); fr6 += 1
+def outside_window(addr):
+    o = addr - 0x4000
+    if o >= 0x1800:
+        row, col = (o - 0x1800) >> 5, (o - 0x1800) & 31
+        return not (1 <= row <= 12 and 4 <= col <= 27)
+    y = ((o >> 5) & 0xC0) | ((o >> 8) & 7) | ((o >> 2) & 0x38); x = o & 31
+    return not (8 <= y < 104 and 4 <= x <= 27)
+b7 = bank(7)
+outs6 = [a for a in range(0x4000, 0x5B00) if outside_window(a)]
+bad6 = [a for a in outs6 if b7[a - 0x4000] != m.memory[a]]
+pat_kept = sum(1 for a in outs6 if m.memory[a] == PAT0[a - 0x4000])
+check(fr6 <= 2 and not bad6 and pat_kept == len(outs6) and b7[0x0703] == PAT0[0x0703] and b7[0x08A0] == PAT0[0x08A0] and b7[0x1823] == PAT0[0x1823],
+      "F6 hud_dirty cleared after %d frame(s); outside the window (%d of 6912 B: pixel rows 0..7 + 104..191, columns 0..3 / 28..31, attribute rows 0 + 13..23 + frame columns) bank 7 == screen 0: %d mismatches; screen 0 kept its pattern there (%d/%d); frame line 4703h, rail 48A0h, frame attr 5823h mirrored" % (
+          fr6, len(outs6), len(bad6), pat_kept, len(outs6)))
+w6 = [a for a in range(0x4000, 0x5B00) if not outside_window(a)]
+check(len(w6) == 2304 + 288 and sum(1 for a in w6 if m.memory[a] != PAT0[a - 0x4000]) > 2000,
+      "F6 window region = %d B (2304 pixel + 288 attribute bytes); screen 0's window was redrawn by the frames (%d B differ from the pattern)" % (len(w6), sum(1 for a in w6 if m.memory[a] != PAT0[a - 0x4000])))
 say("== %s (%d checks failed)" % ("ALL CHECKS PASSED" if not fails else "FAILED", len(fails))); sys.exit(1 if fails else 0)

@@ -31,7 +31,7 @@ $PY tools/nx_tables.py >> build/ci_next.out 2>&1          # build/next/tables_ba
 $PY tools/nx_sprites_b.py --out build/next/assets_b/sprites_b.bin --out2 build/next/assets_b/sprites2_b.bin >> build/ci_next.out 2>&1
 $PY tools/mapc.py next build/next/level01.bin assets/levels/01_entry.txt >> build/ci_next.out 2>&1
 $PY tools/mapc.py next build/next/levels.bin assets/levels/0[1-8]_*.txt >> build/ci_next.out 2>&1
-$PY tools/nx_build.py --src src/next/main_b.asm --out build/next/killemall_b.nex --bin-name main_b \
+$PY tools/nx_build.py --src src/next/main_b.asm --out build/next/killemall_b.nex --bin-name main_b --equ MOUSE_B=1 \
   --assets build/next/assets_b --level build/next/level01.bin --level-txt assets/levels/01_entry.txt \
   --sprites build/next/assets_b/sprites_b.bin --levels build/next/levels.bin --levels-txt assets/levels \
   --sprites2 build/next/assets_b/sprites2_b.bin >> build/ci_next.out 2>&1 || { tail -30 build/ci_next.out; exit 1; }

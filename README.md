@@ -22,8 +22,9 @@ release is the test kit for that, see `docs/` and the H1 notes.
 - 128K: **FINAL v1.0** (closed 8 Nov 2026 13:15Z). 8 levels, enemy types 1-6 with hand-drawn 32x48 art, shadow-screen flip,
   bank-3 hi-res blitter, AY music, Kempston mouse look, 5.9-7.3 fps. Not implemented by decision: the cheaper AY player
   (lane Q spec, +0.13 fps best case, not worth the risk). `killemall128_hires.tap` (2-px zombie route) stays experimental.
-- Next: edition B playable and in active development (black bars + HUD/weapon flash fixed 8 Nov; mouse + vertical look,
-  Doom-class colour sprite art, zxnDDMA pre-fill and hardware sprites next). 20-21 fps on real hardware (core 3.03,
+- Next: edition B playable and in active development (black bars + HUD/weapon flash fixed 8 Nov; Kempston/PS2 mouse look +
+  vertical look merged 8 Nov, OFF by default - press I to toggle, W/S look, E recentre; Doom-class colour sprite art,
+  hardware sprites (lane N6) and zxnDDMA pre-fill next). 20-21 fps on real hardware (core 3.03,
   zero wait state), matching ZEsarUX.
 
 Pre-built tapes and `.nex` files are attached to the GitHub **Releases**; their sha256/md5 are listed there
@@ -62,7 +63,7 @@ The Next build (`tools/nx_build.py`) packs textures, sprites and levels into a `
 .venv/bin/python tools/nx_textures.py --out build/next/assets_b        # palette, walls, floors
 .venv/bin/python tools/nx_sprites_b.py --out build/next/assets_b/sprites_b.bin --out2 build/next/assets_b/sprites2_b.bin
 .venv/bin/python tools/mapc.py next build/next/levels.bin assets/levels/0[1-8]_*.txt
-.venv/bin/python tools/nx_build.py --src src/next/main_b.asm --out build/next/killemall_b.nex --bin-name main_b \
+.venv/bin/python tools/nx_build.py --src src/next/main_b.asm --out build/next/killemall_b.nex --bin-name main_b --equ MOUSE_B=1 \
    --assets build/next/assets_b --levels build/next/levels.bin --levels-txt assets/levels \
    --sprites build/next/assets_b/sprites_b.bin --sprites2 build/next/assets_b/sprites2_b.bin \
    --level build/next/level01.bin --level-txt assets/levels/01_entry.txt

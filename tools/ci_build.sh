@@ -1,7 +1,7 @@
 #!/bin/bash
 # ci_build.sh - reproducible build of the three editions from a clean checkout (used by .github/workflows/build.yml and
 # by hand).  Expects pasmo on PATH and a venv with Pillow + numpy in .venv/.  Writes everything under build/.
-# The 48K/128K build scripts cd into ~/work/killemall; CI runs with the checkout at that exact path.
+# Location-independent: every script resolves the repo root from its own path.
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"

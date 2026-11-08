@@ -16,21 +16,14 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq pasmo
-          # the 48K/128K build scripts cd into ~/work/killemall: point that path at the checkout
-          mkdir -p "$HOME/work" && ln -sfn "$GITHUB_WORKSPACE" "$HOME/work/killemall"
-          cd "$HOME/work/killemall"
           python3 -m venv .venv
           .venv/bin/pip install -q pillow numpy
 
       - name: build all three editions
-        run: |
-          cd "$HOME/work/killemall"
-          bash tools/ci_build.sh
+        run: bash tools/ci_build.sh
 
       - name: artefacts must be byte-identical to the gated hashes
-        run: |
-          cd "$HOME/work/killemall"
-          bash tools/ci_check.sh
+        run: bash tools/ci_check.sh
 
       - uses: actions/upload-artifact@v4
         with:

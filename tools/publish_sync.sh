@@ -1,8 +1,11 @@
 #!/bin/bash
 # publish_sync.sh - push the private repo's new commits into the public mirror (github.com/alexbixor/killemall).
-# Flow: re-run the filter (tools/publish_prepare.sh) into a scratch clone, then rebase the public-only commits
-# (LICENSE/README/CI/location-independent build scripts, kept on the mirror's main) on top of the filtered history.
-# Idempotent; aborts if the secret scan finds anything.  Never pushes with --force unless FORCE=1.
+# Flow: re-run the filter (tools/publish_prepare.sh) into a scratch clone, rebase the public-only commits
+# (LICENSE/README/CI/location-independent build scripts, kept on the mirror's main) on top of the filtered history,
+# refresh the CI sha256 pins from the private repo's gated build/ tapes, push.
+# git-filter-repo re-hashes every commit, so the mirror's history is always "rewritten" relative to GitHub:
+# the push MUST be --force-with-lease (a plain push is rejected non-fast-forward every time - learned 8 Nov 10:21Z).
+# Idempotent; aborts if the secret scan finds anything. Standing rule (Alex, 8 Nov 10:38Z): run after EVERY private commit.
 set -e
 SRC=/home/ubuntu/work/killemall
 PUB=/home/ubuntu/work/killemall_pub
@@ -14,8 +17,21 @@ git remote add origin https://github.com/alexbixor/killemall.git
 git fetch -q origin main
 FILTERED_HEAD=$(git rev-parse HEAD)
 git checkout -q -B main origin/main
-# the public-only commits are those on origin/main whose subjects are not in the filtered history
-git rebase -q --onto "$FILTERED_HEAD" "$(git merge-base origin/main "$FILTERED_HEAD" 2>/dev/null || git rev-list --max-parents=0 origin/main)" main 2>/dev/null || {
-  echo "rebase conflict - resolve by hand in $PUB"; exit 1; }
-git log --oneline -3 | cut -c1-100
-if [ "${FORCE:-0}" = 1 ]; then git push --force-with-lease origin main; else git push origin main; fi
+git rebase -q --onto "$FILTERED_HEAD" "$(git merge-base origin/main "$FILTERED_HEAD")" main || { echo "rebase conflict - resolve by hand in $PUB"; exit 1; }
+# CI pins: the mirror's CI rebuilds and compares against tools/ci_expected_sha256.txt; refresh from the private gated tapes.
+CHANGED=""
+for f in build/kea48.tap build/kea128.tap build/killemall128_m2.tap build/next/killemall_b.nex; do
+  [ -f "$SRC/$f" ] || continue
+  H=$(sha256sum "$SRC/$f" | cut -c1-64)
+  if ! grep -q "^$H  $f\$" tools/ci_expected_sha256.txt; then
+    sed -i "s|^[0-9a-f]\{64\}  $f\$|$H  $f|" tools/ci_expected_sha256.txt
+    CHANGED="$CHANGED ${f##*/}=${H:0:8}"
+  fi
+done
+if [ -n "$CHANGED" ]; then
+  git add tools/ci_expected_sha256.txt
+  git commit -q -m "ci: refresh sha256 pins from the gated private build:$CHANGED"
+  echo "ci pins updated:$CHANGED"
+fi
+git log --oneline -4 | cut -c1-100
+git push --force-with-lease origin main 2>&1 | tail -1

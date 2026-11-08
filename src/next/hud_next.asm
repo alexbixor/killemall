@@ -40,6 +40,58 @@ hd_ammo:
         ld c,223
         ld e,84
         call hud_num2
+        if defined FPSHUD
+; ---- lane H1 (7 Nov 2026): fps readout for the real-hardware session, ONLY in builds made with `--equ FPSHUD=1`
+; (tools/nx_build.py pass-through -> build/next/killemall_b_fps.nex). The default build has no byte of this block.
+; fps = frames rendered in the last 50 ticks: hud_draw runs once per frame (after walk_frame_b incremented frames), so
+; when ticks - fps_tick >= 50 the frame count since the previous sample is latched and the sample point moves on by 50
+; (not to 'now', so the windows tile the tick axis). Two digits (bone 223) at HUD columns 100..107, free between KILLS
+; (84..91) and the key icons (112..). Variables in free bank 5 RAM 5EE0h..5EE4h (main_b_vars.inc: 5E22h..5EEFh unused;
+; the test hook starts at 5EF0h), zero at load (bank 5 is zero in the .nex):
+;   fps_tick    equ 5EE0h   ; word  ticks value at the start of the current 50-tick window
+;   fps_frames  equ 5EE2h   ; word  frames value at the start of the current window
+;   fps_val     equ 5EE4h   ; byte  frames counted in the last complete window (0..99 shown; capped at 99)
+        ld hl,(ticks)
+        ld de,(5EE0h)
+        or a
+        sbc hl,de                       ; HL = ticks since the window start
+        ld a,h
+        or a
+        jr nz,hf_cap                    ; >= 256 ticks (first frame after a long load): resync without a reading
+        ld a,l
+        cp 50
+        jr c,hf_show
+        ld hl,(5EE2h)
+        ex de,hl
+        ld hl,(frames)
+        ld (5EE2h),hl                   ; the window starts again at the current frame count
+        or a
+        sbc hl,de                       ; HL = frames in the window
+        ld a,h
+        or a
+        jr nz,hf_99
+        ld a,l
+        cp 100
+        jr c,hf_store
+hf_99:  ld a,99
+hf_store:
+        ld (5EE4h),a
+        ld hl,(5EE0h)
+        ld de,50
+        add hl,de
+        ld (5EE0h),hl
+        jr hf_show
+hf_cap:
+        ld hl,(ticks)
+        ld (5EE0h),hl
+        ld hl,(frames)
+        ld (5EE2h),hl
+hf_show:
+        ld a,(5EE4h)
+        ld c,223
+        ld e,100
+        call hud_num2
+        endif
         ld a,(g_kkeys)          ; key icons
         ld hl,hud_key_frame
         ld c,HUD_FRAME

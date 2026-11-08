@@ -32,6 +32,10 @@ Edition B options (lane N1A, docs/next_engine_spec_v0.2_flat.md section 1 and 6)
                       list of .txt paths; a missing file -> the defaults (32, flag, plaster), as --level-txt does.
   --sprites2 FILE     lane N3: a second sprite image (<= 16K) packed as 16K bank 15 (= 8K banks 30/31): boss ids 30..34 from
                       tools/nx_sprites_b.py --out2. Default absent -> no bank 15.
+  --equ NAME=VAL      lane H1 (7 Nov 2026): passed to pasmo as `--equ NAME=VAL` (repeatable). `--equ FPSHUD=1` enables the fps
+                      readout block of src/next/hud_next.asm (build/next/killemall_b_fps.nex); PLANES_HI=1 etc. select a plane
+                      tier (N1M). Default none -> the pasmo command line is exactly the old one (byte-identical .nex, proven in
+                      build/night/H1_identity.out).
 Prints the code size, the symbols that matter, what was poked and the .nex path; exit code 0 only when everything was built."""
 import argparse, json, pathlib, subprocess, sys
 HERE = pathlib.Path(__file__).resolve().parent
@@ -57,9 +61,15 @@ def read_syms(path):
             except ValueError: pass
     return syms
 
-def assemble(src, bin_path, sym_path):
+def assemble(src, bin_path, sym_path, equs=()):
+    """lane H1 (7 Nov 2026): equs = pasmo `--equ NAME=VAL` definitions placed in front of --bin (the same syntax that
+    build/night/N1M_build_tier.py used for PLANES_*); the default (none) gives the byte-identical command line of before."""
     src = pathlib.Path(src).resolve()
-    r = subprocess.run(["pasmo", "--bin", src.name, str(bin_path), str(sym_path)], cwd=src.parent, capture_output=True, text=True)
+    cmd = ["pasmo"]
+    for e in equs:
+        cmd += ["--equ", e]
+    cmd += ["--bin", src.name, str(bin_path), str(sym_path)]
+    r = subprocess.run(cmd, cwd=src.parent, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit("pasmo failed (%d):\n%s%s" % (r.returncode, r.stdout, r.stderr))
     return pathlib.Path(bin_path).read_bytes()
@@ -168,16 +178,16 @@ def levels_bank(levels_path, levels_txt, assets):
     return bytes(img), len(levels)
 
 def build(src="src/next/main.asm", out="build/next/killemall_next.nex", bin_name="main", assets=None, level=None, level_index=0, level_txt=None, sprites=None,
-          levels=None, levels_txt=None, sprites2=None):
+          levels=None, levels_txt=None, sprites2=None, equs=()):
     src = ROOT / src
     out = ROOT / out
     assets = ASSETS if assets is None else (ROOT / assets)
     bin_path, sym_path = ROOT / ("build/next/%s.bin" % bin_name), ROOT / ("build/next/%s.sym" % bin_name)
     bin_path.parent.mkdir(parents=True, exist_ok=True)
-    code = assemble(src, bin_path, sym_path)
+    code = assemble(src, bin_path, sym_path, equs)
     syms = read_syms(sym_path)
     code_end = CODE_BASE + len(code)
-    print("assembled %s -> %s: %d bytes, 8000h..%04Xh (code_end sym %04Xh)" % (src.relative_to(ROOT), bin_path.relative_to(ROOT), len(code), code_end, syms.get("code_end", -1)))
+    print("assembled %s%s -> %s: %d bytes, 8000h..%04Xh (code_end sym %04Xh)" % (src.relative_to(ROOT), "".join(" --equ " + e for e in equs), bin_path.relative_to(ROOT), len(code), code_end, syms.get("code_end", -1)))
     if code_end > PALETTE_ADDR:
         sys.exit("ERROR: code ends at %04Xh, above the palette block at %04Xh" % (code_end, PALETTE_ADDR))
     for name in ("start", "main_loop", "tick", "read_keys", "can_move", "setup_camera", "walk_frame", "walk_frame_b", "draw_piece", "plane_add", "void_fill", "fill_col", "code_end"):
@@ -234,5 +244,8 @@ if __name__ == "__main__":
     ap.add_argument("--levels", default=None, help="lane N3: multi-level mapc .bin packed as 2048-byte slots of 16K bank 14 (default: no bank 14)")
     ap.add_argument("--levels-txt", default=None, help="lane N3: directory of level .txt files (sorted) or a comma list; ceil/ftex/ctex per slot")
     ap.add_argument("--sprites2", default=None, help="lane N3: second sprite image (boss ids 30..34) packed as 16K bank 15 (default: no bank 15)")
+    ap.add_argument("--equ", action="append", default=[], metavar="NAME=VAL",
+                    help="lane H1: pasmo --equ NAME=VAL pass-through, repeatable (FPSHUD=1 -> the fps readout of hud_next.asm; PLANES_HI=1 etc.). "
+                         "Default none -> the command line and the .nex are unchanged (byte-identical)")
     a = ap.parse_args()
-    build(a.src, a.out, a.bin_name, a.assets, a.level, a.level_index, a.level_txt, a.sprites, a.levels, a.levels_txt, a.sprites2)
+    build(a.src, a.out, a.bin_name, a.assets, a.level, a.level_index, a.level_txt, a.sprites, a.levels, a.levels_txt, a.sprites2, a.equ)

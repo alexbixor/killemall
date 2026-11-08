@@ -1,0 +1,6 @@
+# Expected sha256 of the reproducible artefacts built by tools/ci_build.sh (pasmo 0.5.3, Python 3.11, Pillow).
+# tools/ci_check.sh compares a fresh build against this list; any drift fails CI.  Update deliberately with each gated release.
+efc8dd21c080fb55919956fb8da04c056fb95ed2d922f8bd84b4e6ef77d15d5e  build/kea48.tap
+2890d922af677dc414c5b57e8f1741fd59e7bae216960f2d4de2a53c7e88accf  build/kea128.tap
+d439fd188746302e5ab88886af7813967d228e00abb391fe587a33f5287ca80d  build/killemall128_m2.tap
+f30136008c70c8986ab28865fabb84d5cac77e8efd22fb269ab35208cbfd1893  build/next/killemall_b.nex

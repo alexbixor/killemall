@@ -9,7 +9,7 @@
 # (gen/hires_art2.asm) and is loaded there (mktap128 bank3_hires.bin@<bank3_org>). The HIRES bank-3 image is build/bank3_hires.bin/.sym
 # (pasmo --equ HIRES=1: zombies take the bank-3 path), so the default build's build/bank3.bin is not overwritten by this script.
 set -e
-cd ~/work/killemall
+cd "$(dirname "$0")/.."   # repo root
 SRC=${1:-src/48k/kea48.asm}
 .venv/bin/python tools/lev128.py --hires
 .venv/bin/python tools/gen_hires.py

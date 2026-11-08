@@ -8,7 +8,7 @@
 # engine's fixed-area addresses (tools/sym_equs.py) and travels on the tape as a second bank image (mktap128 bank3.bin@<bank3_org>).
 # Zombies keep the old 3-px path on this tape (HIRES is not defined); tools/build128_hires.sh is the hi-res zombie build.
 set -e
-cd ~/work/killemall
+cd "$(dirname "$0")/.."   # repo root
 SRC=${1:-src/48k/kea48.asm}
 .venv/bin/python tools/lev128.py --bank3             # lev128_{0..7}.bin, lowcode128.bin/.sym (with hr_pass), gen/lev128_sizes.asm, gen/lowcode128_equ.asm
 .venv/bin/python tools/gen_hires.py                  # gen/hires_art.asm (zombie frames, HIRES build), gen/hires_art2.asm (types 3..6), gen/hires_tabs.asm

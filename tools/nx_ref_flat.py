@@ -133,7 +133,8 @@ class FlatRenderer(nx_ref.Renderer):
             nx_ref.Renderer.__init__(self, to_v01_cells(self.flat, ceil, ftex, ctex), px, py, a, walls, floors)
         assert self.eye == EYE
         assert self.flat.code(self.mx0, self.my0) == 0, "camera cell (%d,%d) is not walkable" % (self.mx0, self.my0)
-        self.exhausted = []                       # columns that ended with VOID(c, 0, 96)
+        self.exhausted = []                       # columns that ended with VOID(c, 0, 96) (left the map / 64 steps)
+        self.clamped_far = []                     # lane N4: columns whose wall was hit at d > 4095 and drawn with d = 4095
 
     # spec v0.2 section 4: plane tiers "lo" and "flat" (the "hi" tier is the inherited v0.1 section 5 code)
     def PLANE_ADD(self, c, h, tex, a, b, kind, d):
@@ -187,12 +188,18 @@ class FlatRenderer(nx_ref.Renderer):
                 my += sy
                 side = 1
             d = max(d, 8)
-            if d > 4095 or not flat.inside(mx, my):
-                break                               # EXHAUST (d > 4095 or left the map)
+            if not flat.inside(mx, my):
+                break                               # EXHAUST (left the map; cannot happen on a closed mapc level)
             code = flat.code(mx, my)
             if code != 0:
                 hit_code = code
                 break
+        # lane N4 (8 Nov 2026, build/night/N4_result.out item 1): a wall farther than 4095 (16 cells) used to EXHAUST the column
+        # into VOID(c, 0, 96) = a full-height black bar (the hardware "vertical black bars" bug); the wall is real, so d is
+        # clamped to 4095 (R, shade 3, ZBUF 4095) and the column is drawn like any other. Only leaving the map / 64 steps void.
+        if hit_code is not None and d > 4095:
+            d = 4095
+            self.clamped_far.append(c)
         if hit_code is None:                        # EXHAUST: 64 steps, d > 4095 or left the map
             self.VOID(c, 0, H)
             self.zbuf[c] = 4095
@@ -266,7 +273,9 @@ def xcheck_scene(level, px, py, a, walls, floors, ceil, ftex, ctex, log):
     with map_size(MAPW, MAPH):
         v01 = nx_ref.Renderer(to_v01_cells(level, ceil, ftex, ctex), px, py, a, walls, floors)
         frame_a, rec_a, zbuf_a = v01.run()
-    exhausted = set(fr.exhausted)
+    # lane N4: columns hit at d > 4095 are drawn at the far clamp by edition B but VOIDed by the read-only v0.1 renderer: excluded like
+    # the exhausted ones (the N4 live oracle nx_test_angles.py proves those columns against render_flat directly)
+    exhausted = set(fr.exhausted) | set(fr.clamped_far)
     diff_px = [i for i in range(W * H) if frame_a[i] != frame_b[i]]
     diff_cols = sorted({i % W for i in diff_px})
     diff_px_live = [i for i in diff_px if (i % W) not in exhausted]

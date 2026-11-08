@@ -5,41 +5,87 @@
 ;   CLEARED: moss 92), then 3x5 digits (rows 89..93) HEALTH at columns 2.. (3 digits, blood 175), SHIELD at 18.. (2 digits,
 ;   water 190, only when > 0), AMMO at 44.. (2 digits, gold 143), KILLS at 84.. (2 digits, bone 223), key icons 4x5 at
 ;   columns 112 (red key, blood 175) and 120 (blue key, bluestone 254): filled when held, a 1-px frame (dark 228) when not.
+; lane N4 (8 Nov 2026, bug 1 "HUD flash", build/night/N4_result.out item 2): the band is NOT cleared every frame any more.
+;   The engine never writes rows 88..95 while the HUD is on (walk_b.asm wb_rmax = 88, set by game_frame), so the band
+;   persists between frames. hud_draw paints the band background + every field once (g_hud_valid = 0: level start, after a
+;   frame without the HUD, g_msg change = band colour change) and afterwards only the fields whose value changed since the
+;   shadow copy (hud_sh_*): the field's 5 rows are cleared to the band colour, then the digits are drawn.
 ; Z80N: add hl,a = db 0EDh,031h
 HUD_ROW     equ 88
 HUD_BG      equ 226             ; dark level 2
 HUD_FRAME   equ 228             ; dark level 4
+; shadows (main_b_vars.inc: 5E22h..5EDFh free; FPSHUD uses 5EE0h..5EE4h; the test hook 5EF0h..). Bank 5 is zero at load.
+hud_sh_msg    equ 5EC0h         ; byte  g_msg of the band on screen
+hud_sh_health equ 5EC1h         ; byte  shadows of the fields drawn (0FFh = not drawn: forces a redraw)
+hud_sh_shield equ 5EC2h
+hud_sh_ammo   equ 5EC3h
+hud_sh_kills  equ 5EC4h
+hud_sh_kkeys  equ 5EC5h
+hud_sh_fps    equ 5EC6h
+g_hud_valid   equ 5EC7h         ; byte  1 = the band on screen is complete (game_frame clears it when the HUD is not drawn)
 
 hud_draw:
-        ; band background: 8 rows x 128 bytes from SCR_BOT + (88-48)*128 = 6000h + 1400h = 7400h
+        ld a,(g_hud_valid)
+        or a
+        jr nz,hd_check_msg
+hd_full:
+        call hud_band_fill      ; band background + all shadows invalidated
+        ld a,1
+        ld (g_hud_valid),a
+        jr hd_fields
+hd_check_msg:
         ld a,(g_msg)
-        ld hl,hud_band_col
-        db 0EDh,031h
-        ld a,(hl)
-        ld hl,7400h
-        ld de,7401h
-        ld (hl),a
-        ld bc,8*128-1
-        ldir
+        ld hl,hud_sh_msg
+        cp (hl)
+        jr nz,hd_full           ; band colour changed: repaint everything
+hd_fields:
         ld a,(g_health)         ; HEALTH 3 digits
-        ld c,175
+        ld hl,hud_sh_health
+        cp (hl)
+        jr z,hd_shield
+        ld (hl),a
         ld e,2
+        ld b,12
+        call hud_field_clear
+        ld c,175
         call hud_num3
+hd_shield:
         ld a,(g_shield)         ; SHIELD 2 digits when > 0
+        ld hl,hud_sh_shield
+        cp (hl)
+        jr z,hd_ammo
+        ld (hl),a
+        ld e,18
+        ld b,8
+        call hud_field_clear
+        ld a,(g_shield)
         or a
         jr z,hd_ammo
         ld c,190
-        ld e,18
         call hud_num2
 hd_ammo:
         ld a,(g_ammo)
-        ld c,143
+        ld hl,hud_sh_ammo
+        cp (hl)
+        jr z,hd_kills
+        ld (hl),a
         ld e,44
+        ld b,8
+        call hud_field_clear
+        ld c,143
         call hud_num2
+hd_kills:
         ld a,(g_kills)
-        ld c,223
+        ld hl,hud_sh_kills
+        cp (hl)
+        jr z,hd_fps
+        ld (hl),a
         ld e,84
+        ld b,8
+        call hud_field_clear
+        ld c,223
         call hud_num2
+hd_fps:
         if defined FPSHUD
 ; ---- lane H1 (7 Nov 2026): fps readout for the real-hardware session, ONLY in builds made with `--equ FPSHUD=1`
 ; (tools/nx_build.py pass-through -> build/next/killemall_b_fps.nex). The default build has no byte of this block.
@@ -87,12 +133,27 @@ hf_cap:
         ld hl,(frames)
         ld (5EE2h),hl
 hf_show:
-        ld a,(5EE4h)
-        ld c,223
+        ld a,(5EE4h)                    ; lane N4: redrawn only when the reading changed
+        ld hl,hud_sh_fps
+        cp (hl)
+        jr z,hd_keys
+        ld (hl),a
         ld e,100
+        ld b,8
+        call hud_field_clear
+        ld c,223
         call hud_num2
         endif
+hd_keys:
         ld a,(g_kkeys)          ; key icons
+        ld hl,hud_sh_kkeys
+        cp (hl)
+        ret z
+        ld (hl),a
+        ld e,112
+        ld b,12
+        call hud_field_clear
+        ld a,(g_kkeys)
         ld hl,hud_key_frame
         ld c,HUD_FRAME
         bit 0,a
@@ -221,3 +282,49 @@ hud_font:
         db 0E0h,0A0h,0E0h,020h,0E0h     ; 9
 hud_band_col:
         db HUD_BG,140,172,92            ; g_msg 0 none, 1 NEED A KEY, 2 YOU DIED, 3 LEVEL CLEARED
+
+; hud_band_fill (lane N4): band background 8 rows x 128 bytes from SCR_BOT + (88-48)*128 = 6000h + 1400h = 7400h in the
+; colour of g_msg; stores hud_sh_msg and sets every field shadow to 0FFh (no field value is 255: health <= 100, ammo/kills
+; <= 99, shield <= 99, kkeys <= 3, fps <= 99) so the next hud_draw repaints all of them. destroys A, BC, DE, HL
+hud_band_fill:
+        ld a,(g_msg)
+        ld (hud_sh_msg),a
+        ld hl,hud_band_col
+        db 0EDh,031h
+        ld a,(hl)
+        ld hl,7400h
+        ld de,7401h
+        ld (hl),a
+        ld bc,8*128-1
+        ldir
+        ld hl,hud_sh_health
+        ld de,hud_sh_shield
+        ld (hl),0FFh
+        ld bc,5                 ; health, shield, ammo, kills, kkeys, fps
+        ldir
+        ret
+
+; hud_field_clear (lane N4): rows HUD_ROW+1..+5 (89..93), columns E .. E+B-1 = band colour of g_msg. keeps E. destroys A, B, C, D, HL
+hud_field_clear:
+        ld a,(g_msg)
+        ld hl,hud_band_col
+        db 0EDh,031h
+        ld c,(hl)               ; C = band colour
+        ld d,HUD_ROW+1
+hfc_r:  push bc
+        push de
+        ld a,e
+        ld b,d
+        call scr_addr           ; HL = screen (row D, col E)
+        pop de
+        pop bc
+        push bc
+hfc_px: ld (hl),c
+        inc hl
+        djnz hfc_px
+        pop bc
+        inc d
+        ld a,d
+        cp HUD_ROW+6
+        jr nz,hfc_r
+        ret

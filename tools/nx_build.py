@@ -189,7 +189,13 @@ def build(src="src/next/main.asm", out="build/next/killemall_next.nex", bin_name
     code_end = CODE_BASE + len(code)
     print("assembled %s%s -> %s: %d bytes, 8000h..%04Xh (code_end sym %04Xh)" % (src.relative_to(ROOT), "".join(" --equ " + e for e in equs), bin_path.relative_to(ROOT), len(code), code_end, syms.get("code_end", -1)))
     if code_end > PALETTE_ADDR:
-        sys.exit("ERROR: code ends at %04Xh, above the palette block at %04Xh" % (code_end, PALETTE_ADDR))
+        # lane N4 (8 Nov 2026): main_b.asm places hud_next.asm at 0A200h (above PALETTE+512, below PLANES): the image may
+        # extend past PALETTE as long as nothing was assembled into the palette / level blocks (pasmo zero-fills the gaps).
+        pal_blk = code[PALETTE_ADDR - CODE_BASE:PALETTE_ADDR - CODE_BASE + 512]
+        lv_blk = code[LEVEL_ADDR - CODE_BASE:LEVEL_ADDR - CODE_BASE + 2048]
+        if any(pal_blk) or any(lv_blk) or code_end > 0xA800:
+            sys.exit("ERROR: code ends at %04Xh, above the palette block at %04Xh (and writes into palette/level/PLANES)" % (code_end, PALETTE_ADDR))
+        print("  (code image spans the palette block with zeros: hud_next.asm at 0A200h.., lane N4)")
     for name in ("start", "main_loop", "tick", "read_keys", "can_move", "setup_camera", "walk_frame", "walk_frame_b", "draw_piece", "plane_add", "void_fill", "fill_col", "code_end"):
         if name in syms: print("  %-13s %04Xh" % (name, syms[name]))
     pal = (assets / "palette.bin").read_bytes()

@@ -71,6 +71,12 @@ setup_camera_b:
 ; ---------------------------------------------------------------------------------------------------------------
 walk_frame_b:
         call planes_reset
+        ld a,(wb_rmax)          ; lane N4: 0 (never set: the engine-only test programs) -> 96
+        or a
+        jr nz,wf_rmax_ok
+        ld a,96
+        ld (wb_rmax),a
+wf_rmax_ok:
         ld hl,(plx)             ; |plx| and its sign
         xor a
         bit 7,h
@@ -121,6 +127,29 @@ wf_loop:
 ;                 pieces top-down, ZBUF[c] = d  (spec v0.2 section 3). EXHAUST -> VOID(c, 0, 96), ZBUF[c] = 4095.
 ; ---------------------------------------------------------------------------------------------------------------
 walk_column_b:
+        ; --- lane N4: per-column row limit rmaxc = wb_rmax, or the weapon's top row where its opaque run reaches row 88
+        ld a,(wb_rmax)
+        ld (wb_rmaxc),a
+        ld hl,(wb_wclip)
+        ld a,h
+        or l
+        jr z,wc_rmaxc_ok
+        ld a,(wb_c)
+        sub 48
+        cp 32
+        jr nc,wc_rmaxc_ok       ; column outside 48..79
+        db 0EDh,031h            ; add hl,a : HL -> top[c-48]
+        ld e,(hl)
+        ld a,32
+        db 0EDh,031h            ; HL -> bottom[c-48]
+        ld a,(hl)
+        cp 88
+        jr nz,wc_rmaxc_ok       ; run does not reach the band: cannot clip (would leave a hole)
+        ld a,e
+        or a
+        jr z,wc_rmaxc_ok
+        ld (wb_rmaxc),a
+wc_rmaxc_ok:
         ; --- cam_c = 2*c + 1 - 128 (odd, -127..127): B = |cam_c|, C = 1 if cam_c < 0
         ld a,(wb_c)
         add a,a
@@ -455,10 +484,13 @@ wc_hit:
         db 0EDh,031h            ; add hl,a
         ld a,(hl)
         ld (pc_tex),a           ; tex = WALLMAP[code]
-        ld hl,(wb_d)            ; d = max(d, 8) ; d > 4095 -> EXHAUST
-        ld a,h
-        cp 10h
-        jp nc,wc_exhaust
+        ld hl,(wb_d)            ; d = max(d, 8) ; d > 4095 -> d = 4095 (lane N4, 8 Nov 2026: was EXHAUST -> VOID(c, 0, 96), the
+        ld a,h                  ; hardware "vertical black bars" bug, build/night/N4_result.out item 1: a wall farther than 16 cells
+        cp 10h                  ; is real and is now drawn at the far clamp; R = 32, shade 3, ZBUF 4095. Only leaving the map voids.)
+        jr c,wc_d_hi_ok
+        ld hl,0FFFh
+        jr wc_d_ok
+wc_d_hi_ok:
         or a
         jr nz,wc_d_ok
         ld a,l
@@ -545,11 +577,12 @@ wc_proj_done:
         ; --- record order: floor plane, ceiling plane, wall pieces top-down
         ld a,(wb_c)
         ld (pl_c),a
-        ld a,(wb_rowa)          ; floor: a = ROW(y_floor) ; if a < 96: PLANE_ADD(c, 0, FTEX, a, 96)
-        cp 96
+        ld a,(wb_rowa)          ; floor: a = ROW(y_floor) ; if a < rmax: PLANE_ADD(c, 0, FTEX, a, rmax)  (rmax = 96 / 88)
+        ld hl,wb_rmaxc
+        cp (hl)
         jr nc,wc_no_floor
         ld (pl_a),a
-        ld a,96
+        ld a,(wb_rmaxc)         ; lane N4: 96, 88 with the HUD band on, or the weapon's top row
         ld (pl_b),a
         xor a
         ld (pl_h),a
@@ -619,7 +652,7 @@ wc_exhaust:                     ; VOID(c, 0, 96) ; ZBUF[c] = 4095
         ld (vd_c),a
         xor a
         ld (vd_a),a
-        ld a,96
+        ld a,(wb_rmaxc)         ; lane N4: VOID(c, 0, rmaxc)
         ld (vd_b),a
         call void_fill
         ld de,0FFFh
@@ -903,9 +936,12 @@ wb_row_of:
         add a,127
         ld a,h
         adc a,0
-        cp 97
-        ret c
-        ld a,96
+        push hl                 ; lane N4: min(ROW, wb_rmaxc) (was min(ROW, 96))
+        ld hl,wb_rmaxc
+        cp (hl)
+        jr c,wbr_ok
+        ld a,(hl)
+wbr_ok: pop hl
         ret
 wbr_zero:
         xor a

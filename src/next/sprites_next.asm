@@ -20,6 +20,39 @@
 ; Z80N: mul d,e = db 0EDh,030h ; add hl,a = db 0EDh,031h ; nextreg r,v = db 0EDh,091h,r,v ; nextreg r,a = db 0EDh,092h,r
 
 game_frame:
+        ; lane N4 (8 Nov 2026, bug 1 "HUD/weapon flash"): the engine is told what NOT to paint before it runs. HUD on ->
+        ; rows 88..95 are left alone (the band persists, hud_draw repaints only changed fields); weapon on -> the columns
+        ; where the pistol's opaque run reaches row 88 are left alone above its top row (wb_wclip -> wclip tables of the
+        ; current g_wframe). Engine-only frames (g_draw_off = 1 or the bit clear) paint the whole 128x96 as before.
+        ld a,96
+        ld hl,0
+        ld (wb_wclip),hl
+        ld hl,g_draw_off
+        bit 0,(hl)
+        jr nz,gf_lim_done               ; engine-only frame: nothing on top, everything painted
+        ld hl,g_draw_mask
+        bit 2,(hl)
+        jr z,gf_lim_w
+        ld a,88
+gf_lim_w:
+        bit 1,(hl)
+        jr z,gf_lim_done
+        push af
+        ld a,(g_wframe)
+        or a
+        ld hl,wclip_idle_top
+        jr z,gf_lim_wc
+        ld hl,wclip_fire_top
+gf_lim_wc:
+        ld (wb_wclip),hl
+        pop af
+gf_lim_done:
+        ld (wb_rmax),a
+        cp 88
+        jr z,gf_hud_keep
+        xor a
+        ld (g_hud_valid),a              ; the band was (or may be) overwritten: the next hud_draw repaints everything
+gf_hud_keep:
         call walk_frame_b
         ld a,(g_draw_off)
         or a
@@ -592,7 +625,14 @@ ds_vs:  srl a
 ds_top_ok:
         ld a,l
         ld (sd_rstart),a
-        ld a,(sd_feet)
+        ld a,(sd_feet)                  ; lane N4: rend = min(feet, wb_rmax) - the HUD band (rows 88..95) is never painted
+        ld hl,wb_rmax
+        cp (hl)
+        jr c,ds_feet_ok
+        ld a,(hl)
+ds_feet_ok:
+        ld hl,sd_rstart
+        ld l,(hl)
         sub l
         ret z
         ret c
@@ -799,3 +839,9 @@ dw_c1:  inc c
         cp 80
         jr nz,dw_col
         ret
+; idle: 19 columns clipped, 276 of 302 opaque pixels never scene-written; multi-run columns (art) [7, 8, 9, 22, 23]
+wclip_idle_top: db 0,0,0,0,0,0,79,0,0,0,76,72,68,65,64,64,64,64,65,68,72,76,0,0,78,79,79,80,81,84,0,0
+wclip_idle_bot: db 0,0,0,0,0,0,83,0,0,0,84,83,86,88,88,88,88,88,88,88,88,88,0,0,88,88,88,88,88,86,0,0
+; fire: 10 columns clipped, 139 of 269 opaque pixels never scene-written; multi-run columns (art) [7, 8, 9, 10, 11, 12, 13, 19, 20, 21, 22, 23, 24]
+wclip_fire_top: db 0,0,0,0,0,0,83,0,0,0,0,0,0,0,64,65,64,64,65,0,0,0,0,0,0,83,83,84,85,0,0,0
+wclip_fire_bot: db 0,0,0,0,0,0,87,0,0,0,0,0,0,0,88,88,88,88,88,0,0,0,0,0,0,88,88,88,88,0,0,0

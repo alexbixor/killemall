@@ -38,6 +38,13 @@ wb_mp3      equ 5B2Ch          ; word  umul32 scratch
 wb_sxn      equ 5B2Eh          ; byte  1 if rx < 0 (sx = -1) else 0
 wb_syn      equ 5B2Fh          ; byte  1 if ry < 0 (sy = -1) else 0
 wb_ddy      equ 5B30h          ; word  ddy = RECIP[|ry|] (parked while the x axis is set up)
+wb_rmax     equ 5B32h          ; byte  lane N4 (8 Nov 2026): first row the engine must NOT write (96 = whole frame; 88 when
+                               ;       game_frame draws the HUD band at rows 88..95, which then persists between frames).
+                               ;       0 (bank 5 zero at load) is read as 96 by walk_frame_b.
+wb_wclip    equ 5B33h          ; word  lane N4: 0 = none, else -> 64 bytes: top[32], bottom[32] of the weapon's opaque run per
+                               ;       screen column 48..79 (0,0 = unclipped column). Columns whose run ends at row 88 are
+                               ;       clipped at top[c]: the engine never paints under the weapon there (bug 1, no flash).
+wb_rmaxc    equ 5B35h          ; byte  per-column row limit of the current column (wb_rmax or the weapon clip)
 
 ; ---- test wrapper / stubs only (test_walk_b.asm, tools/nx_test_walk_b.py)
 WB_T_CAL    equ 5BF0h          ; word  ticks of the calibration loop

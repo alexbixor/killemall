@@ -416,8 +416,17 @@ CTEX_B: db 1                            ; ceiling texture id (manifest "plaster"
         include "draw_b.asm"            ; lane N1D: draw_piece, plane_add, planes_reset, planes_flush, void_fill (tiers)
         include "game_b_next.asm"       ; lane N2: game rules (steps, doors, pickups, enemy AI, pistol), ETAB data
         include "sprites_next.asm"      ; lane N2: things -> vis list -> software sprites with ZBUF occlusion, weapon
-        include "hud_next.asm"          ; lane N2: LoRes HUD band (rows 88..95)
 code_end:
         if code_end gt PALETTE
         .error "main_b.asm code overlaps the palette block at 9E00h"
         endif
+; lane N4 (8 Nov 2026): the HUD (dirty-flag redraw, bug 1) no longer fits below PALETTE (9E00h): code_end would be 9F20h.
+; It is assembled into the free area between PALETTE+512 and PLANES (0A800h), ABOVE the test wrappers (test_full_b.asm /
+; test_game_b.asm: org 0A010h, ends <= 0A095h): 0A200h..0A7FFh. tools/nx_build.py pads the code image to 16K, so the bytes land.
+        org 0A200h
+        include "hud_next.asm"          ; lane N2: LoRes HUD band (rows 88..95) ; lane N4: dirty-flag redraw
+hud_end:
+        if hud_end gt PLANES
+        .error "hud_next.asm overlaps the PLANES block at 0A800h"
+        endif
+        org code_end                    ; the test wrappers (org 0A010h) and nx_build's code length see code_end again

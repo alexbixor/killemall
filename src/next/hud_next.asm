@@ -51,9 +51,7 @@ hd_fields:
         ld e,2
         ld b,12
         call hud_field_clear
-        IF DEFINED HWSPR_B
-        ld a,(g_health)               ; lane N6: hud_field_clear returns A = HUD_ROW+6 (94): N4's code draws "94" in every field
-        ENDIF
+        ld a,(g_health)               ; HF1 (8 Nov 2026, found by lane N6): hud_field_clear returns A = HUD_ROW+6 (94): N4's code draws "94" in every field
         ld c,175
         call hud_num3
 hd_shield:
@@ -79,9 +77,7 @@ hd_ammo:
         ld e,44
         ld b,8
         call hud_field_clear
-        IF DEFINED HWSPR_B
-        ld a,(g_ammo)               ; lane N6: hud_field_clear returns A = HUD_ROW+6 (94): N4's code draws "94" in every field
-        ENDIF
+        ld a,(g_ammo)               ; HF1 (8 Nov 2026, found by lane N6): hud_field_clear returns A = HUD_ROW+6 (94): N4's code draws "94" in every field
         ld c,143
         call hud_num2
 hd_kills:
@@ -93,9 +89,7 @@ hd_kills:
         ld e,84
         ld b,8
         call hud_field_clear
-        IF DEFINED HWSPR_B
-        ld a,(g_kills)               ; lane N6: hud_field_clear returns A = HUD_ROW+6 (94): N4's code draws "94" in every field
-        ENDIF
+        ld a,(g_kills)               ; HF1 (8 Nov 2026, found by lane N6): hud_field_clear returns A = HUD_ROW+6 (94): N4's code draws "94" in every field
         ld c,223
         call hud_num2
 hd_fps:
@@ -154,9 +148,7 @@ hf_show:
         ld e,100
         ld b,8
         call hud_field_clear
-        IF DEFINED HWSPR_B
-        ld a,(5EE4h)                    ; lane N6: reload the reading (hud_field_clear destroys A)
-        ENDIF
+        ld a,(5EE4h)                    ; HF1 (8 Nov 2026, found by lane N6): reload the reading (hud_field_clear destroys A)
         ld c,223
         call hud_num2
         endif

@@ -20,6 +20,42 @@
 ; Z80N: mul d,e = db 0EDh,030h ; add hl,a = db 0EDh,031h ; nextreg r,v = db 0EDh,091h,r,v ; nextreg r,a = db 0EDh,092h,r
 
 game_frame:
+        IF DEFINED HWSPR_B
+        ; lane N6 (8 Nov 2026): HUD band + weapon are hardware sprites (hwspr_next.asm): the engine paints all 96 rows,
+        ; nothing is clipped (wb_rmax 96, wb_wclip 0), draw_weapon is never called, the band is painted in HW_PBUF by
+        ; hud_draw and uploaded as sprite patterns; the sprite visibility / fire pattern follows g_draw_mask and g_wframe.
+        ld a,96
+        ld (wb_rmax),a
+        ld hl,0
+        ld (wb_wclip),hl
+        call walk_frame_b
+        ld a,(g_draw_off)
+        or a
+        ret nz
+gf_hw_key:                              ; (oracle E measures gf_hw_key..gf_hw_done: 95 T when nothing changed)
+        ld a,(g_wframe)                 ; key = fire (bit 7) | mask bits 2 (HUD), 1 (weapon)
+        rrca
+        ld hl,g_draw_mask
+        or (hl)
+        and 86h
+        ld hl,hw_key
+        cp (hl)
+        call nz,hwspr_update            ; 12 x 2 nextreg writes only when the key changed
+        db 0EDh,091h,56h,SPR_BANK0      ; slot 6 = 8K bank 26 (sprite ids 0..13)
+        db 0EDh,091h,57h,SPR_BANK1      ; slot 7 = 8K bank 27 (ids 18..29; the pistol art is in the pattern RAM already)
+        call build_vis
+        ld a,(g_draw_mask)              ; bit 0 sprites, bit 1 weapon (sprite visibility, above), bit 2 HUD
+        bit 0,a
+        call nz,draw_vis
+        ld a,(g_draw_mask)
+        bit 2,a
+        call nz,hud_draw                ; paints changed fields into HW_PBUF, marks hw_dirty
+        ld a,(hw_dirty)
+        or a
+        call nz,hw_band_upload          ; sends the dirty band patterns (0 port writes when nothing changed)
+gf_hw_done:
+        jp gf_drawn
+        ENDIF
         ; lane N4 (8 Nov 2026, bug 1 "HUD/weapon flash"): the engine is told what NOT to paint before it runs. HUD on ->
         ; rows 88..95 are left alone (the band persists, hud_draw repaints only changed fields); weapon on -> the columns
         ; where the pistol's opaque run reaches row 88 are left alone above its top row (wb_wclip -> wclip tables of the
@@ -69,6 +105,7 @@ gf_hud_keep:
         ld a,(g_draw_mask)
         bit 2,a
         call nz,hud_draw
+gf_drawn:
         db 0EDh,091h,56h,WALL_BANK0     ; restore the engine's paging (drawers re-page slot 6 per piece, slot 7 = floors)
         db 0EDh,091h,57h,FLOOR_BANK
         ; tool hook (tools/nx_game_video.py): g_hold = 1 freezes here with the finished frame on screen (single-buffered

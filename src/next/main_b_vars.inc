@@ -32,6 +32,12 @@ mouse_ylast equ 5A1Ch          ; byte  Kempston Y counter (port 0FFDFh) seen at 
 vl_frac     equ 5A1Dh          ; byte  1/256 rows of vertical look not yet applied ((horizon_row:vl_frac) accumulator)
 mouse_dbnc  equ 5A1Eh          ; byte  I-key debounce: frames the key must be released before the next toggle (10)
 VL_DEF      equ 48             ; default horizon row (= the pre-N5 constant 48*256 / 12288)
+; ---- lane N6 (8 Nov 2026): HUD band + weapon as Next hardware sprites (src/next/hwspr_next.asm; every use is inside
+; IF DEFINED HWSPR_B). Bank 5 is zero at load.
+hw_key      equ 5A1Fh          ; byte  sprite attribute state on the FPGA: g_draw_mask bits 2,1 | 80h when g_wframe = 1
+hw_dirty    equ 5A20h          ; byte  bit i = band sprite i (LoRes columns 16i..16i+15) repainted in HW_PBUF, upload pending
+HW_PBUF     equ 7C00h          ; 1 KB  7C00h..7FFFh (free above THINGS_B 7800h..797Fh): the HUD band rows 88..95 painted here
+                               ;       (128-byte stride, like the screen) and re-packed into sprite patterns 8..15 on upload
 VL_MIN      equ 16             ; clamp: the horizon never reaches the top rows ...
 VL_MAX      equ 80             ; ... nor the HUD band (rows 88..95, wb_rmax = 88)
 

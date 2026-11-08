@@ -51,6 +51,9 @@ hd_fields:
         ld e,2
         ld b,12
         call hud_field_clear
+        IF DEFINED HWSPR_B
+        ld a,(g_health)               ; lane N6: hud_field_clear returns A = HUD_ROW+6 (94): N4's code draws "94" in every field
+        ENDIF
         ld c,175
         call hud_num3
 hd_shield:
@@ -76,6 +79,9 @@ hd_ammo:
         ld e,44
         ld b,8
         call hud_field_clear
+        IF DEFINED HWSPR_B
+        ld a,(g_ammo)               ; lane N6: hud_field_clear returns A = HUD_ROW+6 (94): N4's code draws "94" in every field
+        ENDIF
         ld c,143
         call hud_num2
 hd_kills:
@@ -87,6 +93,9 @@ hd_kills:
         ld e,84
         ld b,8
         call hud_field_clear
+        IF DEFINED HWSPR_B
+        ld a,(g_kills)               ; lane N6: hud_field_clear returns A = HUD_ROW+6 (94): N4's code draws "94" in every field
+        ENDIF
         ld c,223
         call hud_num2
 hd_fps:
@@ -145,6 +154,9 @@ hf_show:
         ld e,100
         ld b,8
         call hud_field_clear
+        IF DEFINED HWSPR_B
+        ld a,(5EE4h)                    ; lane N6: reload the reading (hud_field_clear destroys A)
+        ENDIF
         ld c,223
         call hud_num2
         endif
@@ -214,7 +226,11 @@ hg_r:   push bc
         ld b,d
         push af
         ld a,e
+        IF DEFINED HWSPR_B
+        call hw_pat_addr        ; lane N6: HL = HW_PBUF (row D, col E) - the band is a sprite pattern buffer
+        ELSE
         call scr_addr           ; HL = screen (row D, col E)
+        ENDIF
         pop af
         ld b,4
 hg_px:  rla
@@ -278,7 +294,11 @@ hd_r:   push bc
         ld b,d
         push af
         ld a,e
+        IF DEFINED HWSPR_B
+        call hw_pat_addr        ; lane N6
+        ELSE
         call scr_addr
+        ENDIF
         pop af
         ld b,3
 hd_px:  rla
@@ -319,11 +339,21 @@ hud_band_fill:
         ld hl,hud_band_col
         db 0EDh,031h
         ld a,(hl)
+        IF DEFINED HWSPR_B
+        ld hl,HW_PBUF           ; lane N6: the band lives in the pattern buffer; every band sprite must be uploaded
+        ld de,HW_PBUF+1
+        ld (hl),a
+        ld bc,8*128-1
+        ldir
+        ld a,0FFh
+        ld (hw_dirty),a
+        ELSE
         ld hl,7400h
         ld de,7401h
         ld (hl),a
         ld bc,8*128-1
         ldir
+        ENDIF
         ld hl,hud_sh_health
         ld de,hud_sh_shield
         ld (hl),0FFh
@@ -333,6 +363,9 @@ hud_band_fill:
 
 ; hud_field_clear (lane N4): rows HUD_ROW+1..+5 (89..93), columns E .. E+B-1 = band colour of g_msg. keeps E. destroys A, B, C, D, HL
 hud_field_clear:
+        IF DEFINED HWSPR_B
+        call hw_mark_dirty      ; lane N6: the band sprites covering columns E..E+B-1 need an upload after this field
+        ENDIF
         ld a,(g_msg)
         ld hl,hud_band_col
         db 0EDh,031h
@@ -342,7 +375,11 @@ hfc_r:  push bc
         push de
         ld a,e
         ld b,d
+        IF DEFINED HWSPR_B
+        call hw_pat_addr        ; lane N6
+        ELSE
         call scr_addr           ; HL = screen (row D, col E)
+        ENDIF
         pop de
         pop bc
         push bc

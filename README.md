@@ -17,11 +17,14 @@ release is the test kit for that, see `docs/` and the H1 notes.
 
 ## Status (8 Nov 2026)
 
-- 48K: milestone M2.5 frozen (3 levels, 3 enemy types, beeper SFX, loading screen).
-- 128K: 8 levels, enemy types 1-6, shadow-screen flip, bank-3 hi-res blitter for the big enemies, AY music.
-  Hand-drawn 32x48 art for types 3-6 is in `assets/sprites_hires/` and pending merge.
-- Next: edition B playable (8 levels, boss, doors/keys/pickups, HUD, muzzle flash). Flat quality tier shipped;
-  hi/lo tiers compile but are slower. Blitter / hardware-sprite work is gated on the real-hardware fps numbers.
+- 48K: **FINAL v1.0** (closed 8 Nov 2026 13:15Z). Milestone M2.5 frozen: 3 levels, 3 enemy types, beeper SFX, loading screen,
+  6.5-7.9 fps. Byte-identical build gated in CI. Reopened only by a bug report; no mouse (no memory left).
+- 128K: **FINAL v1.0** (closed 8 Nov 2026 13:15Z). 8 levels, enemy types 1-6 with hand-drawn 32x48 art, shadow-screen flip,
+  bank-3 hi-res blitter, AY music, Kempston mouse look, 5.9-7.3 fps. Not implemented by decision: the cheaper AY player
+  (lane Q spec, +0.13 fps best case, not worth the risk). `killemall128_hires.tap` (2-px zombie route) stays experimental.
+- Next: edition B playable and in active development (black bars + HUD/weapon flash fixed 8 Nov; mouse + vertical look,
+  Doom-class colour sprite art, zxnDDMA pre-fill and hardware sprites next). 20-21 fps on real hardware (core 3.03,
+  zero wait state), matching ZEsarUX.
 
 Pre-built tapes and `.nex` files are attached to the GitHub **Releases**; their sha256/md5 are listed there
 and in the release notes so you can verify what you downloaded.

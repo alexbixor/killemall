@@ -3,6 +3,9 @@
 # Usage: launch-killemall.sh [tape.tap]   (default: newest killemall128_*.tap in ~/Emulation/roms/zxspectrum)
 # Pad (Steam Input virtual X-Box pad): left stick fwd/back + strafe, right stick turn, d-pad fwd/back/turn, A fire,
 #      B or X open door, L1/R1 strafe, Y = Enter, START = CAPS SHIFT (START+B = BREAK = pause menu), SELECT = emulator menu.
+# Mouse (8 Nov 2026): Kempston mouse emulated (game menu MOUSE: ON; left = fire, right = open). Clicks never open the emulator
+#      menu (--ignoremouseclickopenmenu --disablemenumouse): use SELECT / F5 / ESC for it. ZEsarUX 13 cannot grab the pointer,
+#      so a long turn stops at the screen edge - move the mouse back and continue (Fuse grabs the pointer, ZEsarUX does not).
 # Keyboard always works: Q A O P M SPACE Z X, CAPS+SPACE pause, F5/ESC emulator menu. --vo sdl: xwindows under Xwayland drops letter keys (3 Nov 2026). KEA_HEADLESS=1 -> 8 s no-window self-test (128K).
 cd ~/Applications/zesarux || exit 1
 export LD_LIBRARY_PATH=~/Applications/zesarux/libs
@@ -24,6 +27,7 @@ echo "$(date -u +%FT%TZ) tape=$TAP js=$JS headless=${KEA_HEADLESS:-0}" >> ~/.loc
 # keys: 113 q fwd, 97 a back, 111 o left, 112 p right, 32 space fire, 109 m open (M2.3), 122 z / 120 x strafe, 13 enter, 128 caps
 exec ./zesarux --noconfigfile --machine 128k "${VID[@]}" \
   --nosplash --nowelcomemessage --disable-all-first-aid --quickexit \
+  --enablekempstonmouse --kempstonmouse-sens 2 --ignoremouseclickopenmenu --disablemenumouse \
   --joystickemulated "OPQA Space" --realjoystickpath "$JS" --cleareventlist \
   --joystickevent -1 Up --joystickevent +1 Down --joystickevent -3 Left --joystickevent +3 Right \
   --joystickevent 1 Fire --joystickevent 6 EscMenu \

@@ -38,6 +38,9 @@ hw_key      equ 5A1Fh          ; byte  sprite attribute state on the FPGA: g_dra
 hw_dirty    equ 5A20h          ; byte  bit i = band sprite i (LoRes columns 16i..16i+15) repainted in HW_PBUF, upload pending
 HW_PBUF     equ 7C00h          ; 1 KB  7C00h..7FFFh (free above THINGS_B 7800h..797Fh): the HUD band rows 88..95 painted here
                                ;       (128-byte stride, like the screen) and re-packed into sprite patterns 8..15 on upload
+; ---- lane N7 (8 Nov 2026): zxnDMA / zxnDDMA plane pre-fill (src/next/dma_next.asm; every use is inside IF DEFINED DMAFILL).
+; g_dma 5E2Bh (reserved by N4), dmf_rmax 5E2Ch, dmf_key 5E2Dh, dmf_y 5E2Fh, dmf_coltab 5E30h..5E8Fh: equates in dma_next.asm
+; (5E22h..5EBFh were free; hud_next.asm uses 5EC0h.., FPSHUD 5EE0h.., the test hook 5EF0h..). Bank 5 is zero at load.
 VL_MIN      equ 16             ; clamp: the horizon never reaches the top rows ...
 VL_MAX      equ 80             ; ... nor the HUD band (rows 88..95, wb_rmax = 88)
 

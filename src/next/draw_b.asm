@@ -441,6 +441,9 @@ vf_nc:  xor a
 planes_reset:
         xor a
         ld (dr_nplanes),a
+        IF DEFINED DMAFILL
+        jp dma_prefill          ; lane N7: DMA pre-fill of the plane rows before the column loop (dma_next.asm)
+        ENDIF
         ret
 
 ; plane_add: rows pl_a..pl_b-1 of column pl_c show the plane (pl_h, pl_tex).
@@ -1103,6 +1106,22 @@ dr_span_far:                    ; d > 4095: palette index 0
 ; (8 - n mod 8) mod 8 like the textured span writer, so the pixel count comes out exact. Rows are 128-byte aligned and
 ; c0 + n <= 128, so `inc e` never has to carry into D. Uses A, B, C, DE, HL, IXL.
 dr_span_fill:
+        IF DEFINED DMAFILL
+        ; lane N7 (8 Nov 2026, dma_next.asm): rows < dmf_rmax were DMA pre-filled with dmf_coltab[row] before the column
+        ; loop; a span of exactly that colour is already on screen -> nothing to paint (pixel-identical by construction).
+        ld c,a
+        ld a,(dr_y)
+        ld hl,dmf_rmax
+        cp (hl)
+        jr nc,dsf_paint         ; row not pre-filled (g_dma 0 -> dmf_rmax 0: never)
+        ld hl,dmf_coltab
+        db 0EDh,031h            ; add hl,a
+        ld a,(hl)
+        cp c
+        ret z                   ; the pre-fill already painted this colour on this row
+dsf_paint:
+        ld a,c
+        ENDIF
         ld c,a                  ; C = colour
         ld a,(dr_y)
         call dr_scr_addr

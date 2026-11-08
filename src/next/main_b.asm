@@ -115,6 +115,9 @@ pal_loop:
         IF DEFINED HWSPR_B
         call hwspr_init                 ; lane N6: sprite palette, pistol patterns, 12 sprite attributes, nextreg 15h = 81h
         ENDIF
+        IF DEFINED DMAFILL
+        call dma_detect                 ; lane N7: g_dma = 2 zxnDDMA / 1 zxnDMA / 0 none (border shows it), dma_next.asm
+        ENDIF
         call game_init                  ; lane N2: health/ammo/keys, things from the mapc level, door log (game_b_next.asm)
         im 1
         ei
@@ -456,6 +459,7 @@ code_end:
         include "hud_next.asm"          ; lane N2: LoRes HUD band (rows 88..95) ; lane N4: dirty-flag redraw
         include "mouse_next.asm"        ; lane N5: mouse look + vertical look (empty unless --equ MOUSE_B=1)
         include "hwspr_next.asm"        ; lane N6: HUD band + weapon as hardware sprites (empty unless --equ HWSPR_B=1)
+        include "dma_next.asm"          ; lane N7: zxnDMA/zxnDDMA plane pre-fill (empty unless --equ DMAFILL=1)
 hud_end:
         if hud_end gt PLANES
         .error "hud_next.asm overlaps the PLANES block at 0A800h"

@@ -11,14 +11,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          # the 48K/128K build scripts cd into ~/work/killemall, so check out at that exact path
-          path: work/killemall
 
       - name: toolchain (pasmo 0.5.3, Python venv with Pillow + numpy)
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq pasmo
+          # the 48K/128K build scripts cd into ~/work/killemall: point that path at the checkout
+          mkdir -p "$HOME/work" && ln -sfn "$GITHUB_WORKSPACE" "$HOME/work/killemall"
           cd "$HOME/work/killemall"
           python3 -m venv .venv
           .venv/bin/pip install -q pillow numpy
@@ -37,7 +36,7 @@ jobs:
         with:
           name: killemall-${{ github.sha }}
           path: |
-            ~/work/killemall/build/killemall48_m25.tap
-            ~/work/killemall/build/killemall128_m2.tap
-            ~/work/killemall/build/next/killemall_b.nex
-            ~/work/killemall/build/ci_sha256.txt
+            build/killemall48_m25.tap
+            build/killemall128_m2.tap
+            build/next/killemall_b.nex
+            build/ci_sha256.txt

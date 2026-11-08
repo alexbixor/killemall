@@ -97,7 +97,7 @@ ETAB:                          ;  hp step mel rng rrg tim wak flg spr ink  spare
         defb  3, 13,  0, 20,  6, 20, 10,  2,  4, 30h,  0,0,0,0,0,0   ; 3 shotgunner (magenta)  hp 30, ranged 20 dmg, range 6
         defb  6, 10,  0, 15,  8, 30, 10,  3,  4, 60h,  0,0,0,0,0,0   ; 4 floater (yellow)      hp 60, ranged 15 dmg, range 8 (walks)
         defb 12, 18, 25,  0,  0, 20, 10,  4,  4, 50h,  0,0,0,0,0,0   ; 5 brute (cyan)          hp 120, melee 25
-        defb 40, 13, 35, 20,  8, 15, 10, 0Eh, 4, 10h,  0,0,0,0,0,0   ; 6 boss (blue)           hp 400, melee 35, ranged 20, range 8
+        defb 40, 13, 35, 20,  8, 15, 10, 0Eh, 4, 70h,  0,0,0,0,0,0   ; 6 boss (white; was 10h bright blue - vanishes on black walls, A3 engine-view check 7 Nov)
         ELSE
         defb 30, 15, 10,  0,  0, 25, 10,  4,  0, 30h,  0,0,0,0,0,0   ; 1 imp (magenta)
         defb 30, 15, 15,  0,  0, 25, 10,  4,  4, 40h,  0,0,0,0,0,0   ; 2 zombie (green)

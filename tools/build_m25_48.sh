@@ -2,7 +2,7 @@
 # build_m25_48.sh - M2.5 (one-ink window + masked sprites, textured ceiling, 192-px window): same steps as build_m24_48.sh,
 # output build/killemall48_m25.tap. m2 / m22 / m23 / m24 tapes stay untouched (m24 sha c02dcf9c).
 set -e
-cd ~/work/killemall
+cd "$(dirname "$0")/.."   # repo root
 export KEA_CLIPSET=${KEA_CLIPSET:-104,112,128}
 .venv/bin/python tools/spritec.py assets/sprites src/gen/sprites_data.asm build/m25_sheet.png
 python3 tools/gen48.py

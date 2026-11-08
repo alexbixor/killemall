@@ -8,7 +8,7 @@
 # Side effect of m25_gates.sh (as always): build_m25_48.sh rewrites build/killemall48_m25.tap with the CURRENT build. This
 # script keeps the current one as build/killemall48_g.tap and puts the shipped m25 tape back from build/night/pre_G/build/.
 # usage: bash tools/gates_v1.sh > build/night/G_gates.out 2>&1 ; exit 0 only when every gate passed.
-cd ~/work/killemall
+cd "$(dirname "$0")/.."   # repo root
 fail=0
 bash tools/m25_gates.sh > build/gates_v1_m25.out 2>&1
 cat build/gates_v1_m25.out

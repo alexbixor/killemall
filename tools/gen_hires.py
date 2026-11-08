@@ -34,9 +34,22 @@ def frame_grids():
         grids.append(grid_hires(ROOT / "assets/sprites_hires" / (n + ".txt")) if HIRES_ALL else grid_up2(ROOT / "assets/sprites" / (n + ".txt")))
     return grids
 
+HIRES_TYPES = True   # lane A3 (7 Nov 2026): types 3..6 from hand-drawn assets/sprites_hires/<name>.txt when the file exists
+                     # (False, or a missing file = lane M2 pixel-doubled grid_up2 of the assets/sprites_m4 original)
+
 def type_grids(t):
-    """lane M2: the 4 frames of enemy type t (3..6) as 32x48 grids, pixel-doubled from assets/sprites_m4."""
-    return [grid_up2(ROOT / "assets/sprites_m4" / (n + ".txt")) for n in TYPE_SRC[t]]
+    """lane M2: the 4 frames of enemy type t (3..6) as 32x48 grids, pixel-doubled from assets/sprites_m4.
+    lane A3: when HIRES_TYPES is True and assets/sprites_hires/<name>.txt exists, that hand-drawn 32x48 frame is used instead
+    (per frame, so a half-finished set still builds)."""
+    out = []
+    for n in TYPE_SRC[t]:
+        hp = ROOT / "assets/sprites_hires" / (n + ".txt")
+        out.append(grid_hires(hp) if HIRES_TYPES and hp.exists() else grid_up2(ROOT / "assets/sprites_m4" / (n + ".txt")))
+    return out
+
+def type_frames(t):
+    """lane A3: alias of type_grids(t) (the name used in the A3 brief)."""
+    return type_grids(t)
 
 def load_txt(path):
     rows = [l.rstrip("\n") for l in pathlib.Path(path).read_text().splitlines() if l and not l.startswith(";")]
@@ -128,7 +141,9 @@ def main():
          "        org 0F460h", "HRRAY:", db([8 * ((2 * k) // 24) + PXRAY[(2 * k) % 24] for k in range(96)])]
     (OUT.parent / "hires_tabs.asm").write_text("\n".join(t) + "\n")
     print("wrote %s: 4 zombie frames, %d B of run lists + pointers (identical columns shared), tables %d B" % (OUT, total, 129 + 98 + 130))
-    print("wrote %s: types 3..6 = 16 frames, %d B (HRFRM2 40 B + per type %s)" % (OUT2, total2, per_type))
+    src = {t: sum(1 for n in TYPE_SRC[t] if HIRES_TYPES and (ROOT / "assets/sprites_hires" / (n + ".txt")).exists()) for t in (3, 4, 5, 6)}
+    print("wrote %s: types 3..6 = 16 frames, %d B (HRFRM2 40 B + per type %s); hand-drawn hi-res frames per type %s (HIRES_TYPES=%s), art2_end = bank3_org + %d (gate F000h)"
+          % (OUT2, total2, per_type, src, HIRES_TYPES, total2))
 
 def model_frames():
     """For tools/test_hires.py: the same 4 zombie frames as lists of 32 run lists."""

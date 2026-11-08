@@ -18,7 +18,7 @@
 ; 20h) else corpse (state 3: ink A0h) else HRINK[type] (= the ETAB ink column). The image is loaded at bank3_org (mktap128
 ; "build/bank3.bin@<bank3_org>"); the gap between art2_end and F000h is zero-filled by pasmo --bin. Externals added: things,
 ; and --equ HIRES=1 (build128_hires.sh only) for the zombie decision.
-        org 0DE00h
+        org 0DC00h             ; lane A3 (7 Nov 2026): was 0DE00h; the hand-drawn types 3..6 art is 4977 B, so the block grows down 512 B (free bank-3 space C000h..DDFFh)
 bank3_org:
         include "gen/hires_art2.asm"   ; tools/gen_hires.py: HRFRM2 (5 x 4 frame pointers), types 3..6 frames, art2_end (<= F000h, build gate)
         org 0F000h
@@ -380,7 +380,8 @@ hm_n:   djnz hm_l
         ret
 ; HRINK[type] = ink << 4 of enemy types 0..6: must equal etab.asm ETAB +9 (the ETAB ink column; tools/test_m2.py asserts it
 ; against the engine image). 1 imp magenta, 2 zombie green, 3 shotgunner magenta, 4 floater yellow, 5 brute cyan, 6 boss blue.
-HRINK:  defb 0,030h,040h,030h,060h,050h,010h
+HRINK:  defb 0,030h,040h,030h,060h,050h,070h   ; lane A3 merge (8 Nov): type 6 was 010h (bright blue) - the A3 engine-view check showed
+                                             ; the boss vanishing on black walls; 070h = white, hit-flash/corpse stay red via ds_ink
 hr_hv:  defb 0
 hr_hd:  defb 0
 hr_cx:  defb 0

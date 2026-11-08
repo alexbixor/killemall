@@ -173,9 +173,19 @@ dr_mul16x8:
 ; dr_row_params: dr_h, dr_tex, dr_y -> dr_far (1: too far, nothing else valid) or dr_d, dr_s, dr_page, dr_dx, dr_dy, dr_xb, dr_yb.
 ; Spec 5: dy = 2*(y-48)+1, dh = eye - h, d = (|dh| * RD[|dy|]) >> 6 (24-bit product), far if d > 4095.
 dr_row_params:
+        IF DEFINED MOUSE_B
+        ld a,(horizon_row)      ; lane N5: dy = 2*(y - horizon_row) + 1 = 2y - (2*horizon_row - 1) (95 for the default 48)
+        add a,a
+        dec a
+        ld c,a
+        ld a,(dr_y)
+        add a,a
+        sub c
+        ELSE
         ld a,(dr_y)
         add a,a
         sub 95                  ; A = 2y - 95 = dy
+        ENDIF
         jr nc,drp_dy
         neg
 drp_dy: ld l,a                  ; |dy| 1..95

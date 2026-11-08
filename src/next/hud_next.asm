@@ -32,6 +32,10 @@ hd_full:
         call hud_band_fill      ; band background + all shadows invalidated
         ld a,1
         ld (g_hud_valid),a
+        IF DEFINED MOUSE_B
+        ld a,0FFh
+        ld (hud_sh_mouse),a     ; lane N5: the band was repainted -> redraw the mouse indicator too
+        ENDIF
         jr hd_fields
 hd_check_msg:
         ld a,(g_msg)
@@ -145,6 +149,29 @@ hf_show:
         call hud_num2
         endif
 hd_keys:
+        IF DEFINED MOUSE_B
+; ---- lane N5 (8 Nov 2026): mouse indicator, a 4x5 "M" (bone 223) at HUD columns 94..97 (free between KILLS 84..91 and the
+; FPSHUD digits 100..107), drawn when opt_mouse_b = 1, cleared to the band colour when 0; dirty-flag like every other field.
+hud_sh_mouse equ 5EC8h          ; byte  opt_mouse_b value of the indicator on screen (0FFh = not drawn)
+        ld a,(opt_mouse_b)
+        ld hl,hud_sh_mouse
+        cp (hl)
+        jr z,hd_keys2
+        ld (hl),a
+        ld e,94
+        ld b,4
+        call hud_field_clear
+        ld a,(opt_mouse_b)
+        or a
+        jr z,hd_keys2
+        ld hl,hud_glyph_m
+        ld c,223
+        ld e,94
+        call hud_glyph4
+        jr hd_keys2
+hud_glyph_m: db 09h,0Fh,0Fh,09h,09h
+hd_keys2:
+        ENDIF
         ld a,(g_kkeys)          ; key icons
         ld hl,hud_sh_kkeys
         cp (hl)

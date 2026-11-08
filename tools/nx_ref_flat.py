@@ -224,10 +224,18 @@ class FlatRenderer(nx_ref.Renderer):
         self.zbuf[c] = d
 
 
-def render_flat(level_bytes, px, py, a, walls, floors, ceil=32, ftex=0, ctex=1, tier="hi"):
-    """-> (frame bytes, records, zbuf). See the module docstring."""
-    r = FlatRenderer(level_bytes, px, py, a, walls, floors, ceil, ftex, ctex, tier)
-    return r.run()
+def render_flat(level_bytes, px, py, a, walls, floors, ceil=32, ftex=0, ctex=1, tier="hi", horizon=48):
+    """-> (frame bytes, records, zbuf). See the module docstring.
+    lane N5 (8 Nov 2026): `horizon` = the y-shear horizon row (horizon_row of main_b_vars.inc, default 48 = the v0.1 constant):
+    nx_ref's y_of (y_q8 = HOR*256 - (h - eye)*R) and _plane_row (dy = 2*(y - HOR) + 1) read the module global HOR, which is
+    set for the duration of this render only (nx_ref itself untouched, like map_size)."""
+    old = nx_ref.HOR
+    nx_ref.HOR = horizon
+    try:
+        r = FlatRenderer(level_bytes, px, py, a, walls, floors, ceil, ftex, ctex, tier)
+        return r.run()
+    finally:
+        nx_ref.HOR = old
 
 
 def camera_info(level, px, py, a, ceil=32, ftex=0, ctex=1):

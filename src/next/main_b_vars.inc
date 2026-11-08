@@ -17,6 +17,23 @@ g_mgx       equ 5A0Eh          ; word  collision margin x: +WALL_MARGIN / -WALL_
 g_mgy       equ 5A10h          ; word  collision margin y
 g_tx        equ 5A12h          ; word  collision test point x = candidate + margin (Q8)
 g_ty        equ 5A14h          ; word  collision test point y
+; ---- lane N5 (8 Nov 2026): mouse look + vertical look (src/next/mouse_next.asm; every use is inside IF DEFINED MOUSE_B).
+; Bank 5 is zero at load, so opt_mouse_b defaults OFF (never auto-detected: floating-bus junk without an interface);
+; horizon_row is set to 48 by start (main_b.asm).
+opt_mouse_b equ 5A16h          ; byte  0 = mouse look OFF (default), 1 = ON (toggled by the I key)
+mouse_last  equ 5A17h          ; byte  Kempston X counter (port 0FBDFh) seen at the previous frame
+mouse_frac  equ 5A18h          ; byte  1/256 angle units not yet turned ((ang:mouse_frac) accumulator)
+mouse_btn   equ 5A19h          ; byte  click latch: KEY_FIRE (left) / KEY_USE (right) bits, ORed into g_keys by read_keys
+horizon_q8  equ 5A1Ah          ; word  horizon_row * 256: the low byte (5A1Ah, vl_pad) is ALWAYS 0, so `ld hl,(horizon_q8)`
+vl_pad      equ 5A1Ah          ; byte  = 0 (set by start, never written again)
+horizon_row equ 5A1Bh          ; byte  y-shear horizon row (default 48, clamped VL_MIN..VL_MAX): walk_b.asm wb_yproj_r,
+                               ;       sprites_next.asm feet projection and draw_b.asm dr_row_params all project through it
+mouse_ylast equ 5A1Ch          ; byte  Kempston Y counter (port 0FFDFh) seen at the previous frame
+vl_frac     equ 5A1Dh          ; byte  1/256 rows of vertical look not yet applied ((horizon_row:vl_frac) accumulator)
+mouse_dbnc  equ 5A1Eh          ; byte  I-key debounce: frames the key must be released before the next toggle (10)
+VL_DEF      equ 48             ; default horizon row (= the pre-N5 constant 48*256 / 12288)
+VL_MIN      equ 16             ; clamp: the horizon never reaches the top rows ...
+VL_MAX      equ 80             ; ... nor the HUD band (rows 88..95, wb_rmax = 88)
 
 ; ---- code bank blocks poked by tools/nx_build.py
 PALETTE     equ 9E00h          ; 512 bytes: <assets>/palette.bin (256 entries x 2 bytes, Next 9-bit write order)

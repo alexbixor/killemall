@@ -235,10 +235,18 @@ tx_h_ok:
         add a,d
         ld h,a
         ld l,e                          ; HL = 22*R (<= 45056)
+        IF DEFINED MOUSE_B
+        ld de,127                       ; lane N5: feet = min(96, ((22*R + 127) >> 8) + horizon_row) - same value as below for
+        add hl,de                       ; horizon_row = 48 (12288 is a multiple of 256); the sprite shifts with the y-shear
+        ld a,(horizon_row)
+        add a,h
+        jr c,tx_f96
+        ELSE
         ld de,12288+127
         add hl,de
         jr c,tx_f96
         ld a,h
+        ENDIF
         cp 97
         jr c,tx_f_ok
 tx_f96: ld a,96

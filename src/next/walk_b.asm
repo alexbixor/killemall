@@ -897,6 +897,22 @@ wby_mul:                        ; A = |h - eye| (1..255), C = 1 if h - eye < 0, 
         ld a,c
         or a
         jr nz,wby_dh_neg
+        IF DEFINED MOUSE_B
+        ld hl,(horizon_q8)      ; lane N5: y = horizon_row*256 - product ; < -32768 -> -32768
+        or a
+        sbc hl,de
+        ret nc                  ; product <= horizon: positive
+        bit 7,h
+        ret nz                  ; -32768..-1
+        jp wby_min
+wby_dh_neg:
+        ld hl,(horizon_q8)      ; y = horizon_row*256 + product ; > 32767 -> 32767
+        add hl,de
+        jp c,wby_max
+        bit 7,h
+        jp nz,wby_max
+        ret
+        ELSE
         ld hl,0B000h            ; h - eye > 0: y = 12288 - product ; product > 45056 -> -32768
         sbc hl,de
         jp c,wby_min
@@ -912,6 +928,7 @@ wby_dh_neg:
         ld hl,3000h
         add hl,de
         ret
+        ENDIF
 wby_saturate:
         ld a,c
         or a
@@ -923,7 +940,11 @@ wby_max:
         ld hl,7FFFh             ; 32767
         ret
 wby_center:
+        IF DEFINED MOUSE_B
+        ld hl,(horizon_q8)      ; lane N5: horizon_row*256 (48*256 unless vertical look moved it)
+        ELSE
         ld hl,3000h             ; 48*256
+        ENDIF
         ret
 
 ; ---------------------------------------------------------------------------------------------------------------

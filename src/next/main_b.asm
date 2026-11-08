@@ -104,6 +104,14 @@ pal_loop:
         ld (g_draw_mask),a              ; lane N2: sprites + weapon + HUD (the oracles clear bits)
         xor a
         ld (g_lvreq),a                  ; lane N3: no level request pending (tools/nx_game_video.py --level K sets it)
+        IF DEFINED MOUSE_B
+        ld (vl_pad),a                   ; lane N5: horizon_q8 = horizon_row*256 (pad byte 0), horizon_row = 48, mouse OFF
+        ld (opt_mouse_b),a
+        ld (mouse_btn),a
+        ld (mouse_dbnc),a
+        ld a,VL_DEF
+        ld (horizon_row),a
+        ENDIF
         call game_init                  ; lane N2: health/ammo/keys, things from the mapc level, door log (game_b_next.asm)
         im 1
         ei
@@ -134,6 +142,10 @@ ml_cap:
         ld a,MAX_TICKS
 ml_ticks_ok:
         ld (g_dticks),a
+        IF DEFINED MOUSE_B
+        call look_keys_b                ; lane N5: I toggles the mouse, W/S/E vertical look (mouse_next.asm)
+        call mouse_look_b               ; lane N5: Kempston/PS2 mouse -> ang (g_moved), horizon_row, click latch
+        ENDIF
         call read_keys
 ml_tick_loop:
         ld a,(g_dticks)
@@ -220,6 +232,20 @@ rk_9:   bit 0,a
         set KB_USE,c
 rk_10:
         ld a,c
+        IF DEFINED MOUSE_B
+        ld hl,mouse_btn                 ; lane N5: OR the click latch (KEY_FIRE / KEY_USE) into g_keys; clear it only in a
+        or (hl)                         ; frame that runs a game step (game_steps: ticks - g_step_t >= STEP_B), so a click
+        ld c,a                          ; between two 0.1 s steps is never lost (game_tick consumes g_keys, not read_keys)
+        ld a,(ticks)
+        ld hl,g_step_t
+        sub (hl)
+        cp STEP_B
+        ld a,c
+        jr c,rk_11
+        ld hl,mouse_btn
+        ld (hl),0
+rk_11:
+        ENDIF
         ld (g_keys),a
         ret
 
@@ -425,6 +451,7 @@ code_end:
 ; test_game_b.asm: org 0A010h, ends <= 0A095h): 0A200h..0A7FFh. tools/nx_build.py pads the code image to 16K, so the bytes land.
         org 0A200h
         include "hud_next.asm"          ; lane N2: LoRes HUD band (rows 88..95) ; lane N4: dirty-flag redraw
+        include "mouse_next.asm"        ; lane N5: mouse look + vertical look (empty unless --equ MOUSE_B=1)
 hud_end:
         if hud_end gt PLANES
         .error "hud_next.asm overlaps the PLANES block at 0A800h"

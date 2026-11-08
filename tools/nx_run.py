@@ -19,8 +19,11 @@ from run48 import zrcp, ZES
 ROOT = HERE.parent
 
 class NexRun:
-    def __init__(self, nex, log=None, extra=()):
+    def __init__(self, nex, log=None, extra=(), mouse=False):
+        """lane N5 (8 Nov 2026): mouse=True adds --enablekempstonmouse (ZEsarUX serves ports 0FBDFh/0FFDFh/0FADFh from the
+        X pointer under --vo xwindows, tools/nx_test_mouse.py); default False -> command line unchanged for every oracle."""
         self.nex = str(pathlib.Path(nex).resolve()); self.extra = list(extra); self.p = None; self.s = None
+        if mouse: self.extra = ["--enablekempstonmouse"] + self.extra
         self.log = log or "/tmp/zes_nx_run_%d_%d.log" % (os.getpid(), random.randint(0, 9999))
     def __enter__(self):
         port = 10600 + random.randint(0, 200)
